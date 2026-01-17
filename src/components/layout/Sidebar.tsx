@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun } from 'lucide-react';
+import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun, Menu, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useState, useEffect } from 'react';
 
