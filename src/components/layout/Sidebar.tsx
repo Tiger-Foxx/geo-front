@@ -204,8 +204,8 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-              <div className="h-full">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-2">
+              <div className="h-full pr-2">
                   {children}
                   {/* Fallback internal nav if children not provided */}
                   {!children && (
