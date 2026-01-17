@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { REGIONS_DEPARTMENTS, CROPS, generateMockData } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, ArrowRight, Download, Filter, BarChart3, MapPin, ChevronDown, Table2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ArrowRight, Download, Filter, BarChart3, MapPin, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const TabularView = () => {
@@ -31,8 +31,8 @@ export const TabularView = () => {
   const cols = pivotMode === 'years-rows' ? departments : years;
 
   return (
-    <div className="h-full w-full bg-slate-50/50 dark:bg-black p-8 pt-32 flex flex-col">
-       <div className="max-w-7xl mx-auto w-full h-full flex flex-col space-y-6">
+    <div className="h-full w-full bg-slate-50/50 dark:bg-black p-8 pt-32 flex flex-col items-center">
+       <div className="max-w-7xl w-full h-full flex flex-col space-y-6">
         
         {/* Magic Toolbar */}
         <header className="relative z-[500] flex flex-col md:flex-row justify-between items-end md:items-center gap-4 bg-white/60 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-3xl border border-white/60 dark:border-white/10 shadow-sm">

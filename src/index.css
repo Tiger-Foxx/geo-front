@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-cameroon-green: #056B32;
   --color-cameroon-yellow: #FFCD00;

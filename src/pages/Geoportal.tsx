@@ -26,7 +26,7 @@ export const Geoportal = () => {
   });
   const [showBasemapSelector, setShowBasemapSelector] = useState(false);
   const [isDateWidgetCollapsed, setIsDateWidgetCollapsed] = useState(true);
-  const [userOverrodeBasemap, setUserOverrodeBasemap] = useState(false);
+  const [, setUserOverrodeBasemap] = useState(false);
 
   // Handle manual basemap change by user
   const handleBasemapChange = (newBasemap: BasemapType) => {

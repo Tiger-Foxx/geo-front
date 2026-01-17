@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ChevronRight, Activity, Moon, Sun } from 'lucide-react';
+import { ChevronRight, Moon, Sun } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 
