@@ -245,27 +245,27 @@ export const Geoportal = () => {
         {/* Top Floating Bar (Google Maps Style) - ONLY VISIBLE IN MAP VIEW */}
         <AnimatePresence>
           {view === 'map' && (
-             <div className="absolute top-6 left-24 right-6 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
+             <div className="absolute top-3 md:top-6 left-16 right-3 sm:left-20 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
                 <motion.div 
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -20, opacity: 0 }}
-                    className="w-full h-12 glass rounded-full flex items-center px-2 pointer-events-auto border border-white/60 dark:border-white/10 shadow-xl ring-1 ring-black/5"
+                    className="w-full h-10 md:h-12 glass rounded-full flex items-center px-2 pointer-events-auto border border-white/60 dark:border-white/10 shadow-xl ring-1 ring-black/5"
                 >
-                    <div className="w-10 h-full flex items-center justify-center">
-                    <Search size={18} className="text-slate-400 dark:text-neutral-500" />
+                    <div className="w-8 md:w-10 h-full flex items-center justify-center flex-shrink-0">
+                    <Search size={16} className="md:w-[18px] md:h-[18px] text-slate-400 dark:text-neutral-500" />
                     </div>
                     <input 
                         type="text" 
-                        placeholder="Chercher une zone, un département..." 
-                        className="flex-1 bg-transparent border-none focus:ring-0 text-[13px] font-medium outline-none placeholder:text-slate-400 dark:placeholder:text-neutral-500 h-full text-slate-700 dark:text-neutral-200"
+                        placeholder="Chercher..." 
+                        className="flex-1 bg-transparent border-none focus:ring-0 text-xs md:text-[13px] font-medium outline-none placeholder:text-slate-400 dark:placeholder:text-neutral-500 h-full text-slate-700 dark:text-neutral-200"
                     />
-                    <button className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-full transition-colors relative">
-                        <Filter size={16} className="text-slate-500 dark:text-neutral-400" />
+                    <button className="p-1.5 md:p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-full transition-colors relative hidden sm:block">
+                        <Filter size={14} className="md:w-[16px] md:h-[16px] text-slate-500 dark:text-neutral-400" />
                     </button>
-                    <div className="w-px h-6 bg-slate-200 dark:bg-neutral-700 mx-2" />
-                    <div className="pr-1">
-                        <div className="w-8 h-8 rounded-full bg-cameroon-red text-white flex items-center justify-center text-xs font-bold border-2 border-white dark:border-neutral-900 shadow-sm ring-2 ring-red-100 dark:ring-red-900/20">
+                    <div className="w-px h-4 md:h-6 bg-slate-200 dark:bg-neutral-700 mx-1.5 md:mx-2 hidden sm:block" />
+                    <div className="pr-1 hidden sm:block">
+                        <div className="w-7 md:w-8 h-7 md:h-8 rounded-full bg-cameroon-red text-white flex items-center justify-center text-xs font-bold border-2 border-white dark:border-neutral-900 shadow-sm ring-2 ring-red-100 dark:ring-red-900/20">
                             A
                         </div>
                     </div>
