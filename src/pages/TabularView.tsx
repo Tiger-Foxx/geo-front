@@ -32,7 +32,7 @@ export const TabularView = () => {
 
   return (
     <div className="h-full w-full bg-slate-50/50 dark:bg-black px-3 md:px-8 pt-20 md:pt-32 pb-4 md:pb-8 flex flex-col items-center overflow-auto">
-       <div className="max-w-7xl w-full flex flex-col space-y-4 md:space-y-6">
+       <div className="max-w-7xl w-full h-full flex flex-col space-y-4 md:space-y-6">
         
         {/* Magic Toolbar */}
         <header className="relative z-[500] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 bg-white/60 dark:bg-neutral-900/80 backdrop-blur-md p-4 md:p-6 rounded-2xl md:rounded-3xl border border-white/60 dark:border-white/10 shadow-sm">
@@ -140,7 +140,7 @@ export const TabularView = () => {
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex-1 overflow-hidden bg-white/80 dark:bg-neutral-950/90 backdrop-blur-xl rounded-2xl md:rounded-3xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
+            className="flex-1 min-h-[400px] overflow-hidden bg-white/80 dark:bg-neutral-950/90 backdrop-blur-xl rounded-2xl md:rounded-3xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
         >
           <div className="absolute inset-0 overflow-x-auto md:overflow-auto custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-[800px]">
