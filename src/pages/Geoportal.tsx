@@ -427,11 +427,11 @@ export const Geoportal = () => {
                             animate={{ y: 0, opacity: 1 }}
                             className="glass px-4 py-3 rounded-2xl flex items-center gap-4 pointer-events-auto shadow-lg ring-1 ring-black/5"
                         >
-                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">Production</span>
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-widest whitespace-nowrap">Production</span>
                             <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-mono text-slate-400">0t</span>
+                                <span className="text-[10px] font-mono text-slate-400 dark:text-neutral-500">0t</span>
                                 <div className="h-2 w-48 rounded-full bg-gradient-to-r from-cameroon-yellow via-cameroon-green to-green-900 shadow-inner border border-black/5" />
-                                <span className="text-[10px] font-mono text-slate-400">Max</span>
+                                <span className="text-[10px] font-mono text-slate-400 dark:text-neutral-500">Max</span>
                             </div>
                         </motion.div>
                     </div>

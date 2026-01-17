@@ -41,9 +41,9 @@ export const TabularView = () => {
                 <div className="p-2 bg-cameroon-green/10 rounded-lg text-cameroon-green">
                     <BarChart3 size={20} />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Matrice Économique</h1>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Matrice Économique</h1>
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm pl-12">Analyse croisée des volumes par bassin</p>
+            <p className="text-slate-500 dark:text-neutral-400 text-sm pl-12">Analyse croisée des volumes par bassin</p>
           </div>
           
           <div className="flex flex-wrap gap-3 items-center">
@@ -62,7 +62,7 @@ export const TabularView = () => {
                 </button>
              </div>
 
-             <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
+             <div className="h-8 w-px bg-slate-200 dark:bg-neutral-700 mx-2" />
 
              {/* Custom Region Selector */}
              <div className="relative z-50">
@@ -130,7 +130,7 @@ export const TabularView = () => {
                 <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
              </div>
 
-             <button className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all" title="Exporter CSV">
+             <button className="p-2 text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-200 hover:bg-white dark:hover:bg-neutral-800 rounded-xl transition-all" title="Exporter CSV">
                  <Download size={20} />
              </button>
           </div>

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 
 /* Topographic contour lines component */
 const ContourLines = () => (
-  <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none text-slate-800 dark:text-slate-400" viewBox="0 0 100 100" preserveAspectRatio="none">
+  <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none text-slate-800 dark:text-neutral-400" viewBox="0 0 100 100" preserveAspectRatio="none">
     <motion.path
       d="M0 50 Q 25 30, 50 50 T 100 50"
       fill="none"
