@@ -55,13 +55,13 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
   ];
 
   return (
-    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex gap-2 md:gap-4 pointer-events-none">
-      {/* Mobile Toggle Button */}
+    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex gap-2 md:gap-4">
+      {/* Mobile Toggle Button - Always visible on mobile */}
       <button 
         onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-        className="md:hidden pointer-events-auto p-2.5 rounded-xl md:rounded-2xl bg-white dark:bg-neutral-900 border border-white dark:border-white/10 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
+        className="md:hidden pointer-events-auto p-2.5 rounded-xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border border-slate-200 dark:border-white/20 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
       >
-        {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
       {/* Mobile Overlay */}
@@ -72,15 +72,16 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[3005]"
+            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[3005]"
           />
         )}
       </AnimatePresence>
-      {/* 1. Thin Utility Dock (The "Apple" Dock) */}
+      
+      {/* 1. Thin Utility Dock (The "Apple" Dock) - Hidden on mobile unless menu open */}
       <motion.div 
          initial={{ x: -20, opacity: 0 }}
          animate={{ x: 0, opacity: 1 }}
-         className={`w-14 md:w-16 h-full flex-col items-center py-3 md:py-4 gap-3 md:gap-4 glass rounded-2xl md:rounded-3xl pointer-events-auto shadow-2xl relative z-20 ${isMobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}
+         className={`w-14 md:w-16 h-full flex-col items-center py-3 md:py-4 gap-3 md:gap-4 glass rounded-2xl md:rounded-3xl pointer-events-auto shadow-2xl relative z-[3010] ${isMobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}
       >
         {/* Brand - Coat of Arms */}
         <div 
@@ -179,7 +180,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             animate={{ x: 0, opacity: 1, scale: 1 }}
             exit={{ x: -20, opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className={`${isMobileSidebarOpen ? 'fixed' : 'hidden md:flex'} md:relative w-[90vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3008] md:z-auto bottom-2 left-2 md:bottom-auto md:left-auto`}
+            className={`${isMobileSidebarOpen ? 'flex fixed' : 'hidden'} md:flex md:relative w-[85vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3009] md:z-auto left-16 bottom-2 md:left-auto md:bottom-auto`}
           >
             {/* Header */}
             <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">

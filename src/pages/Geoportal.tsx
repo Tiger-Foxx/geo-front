@@ -245,7 +245,7 @@ export const Geoportal = () => {
         {/* Top Floating Bar (Google Maps Style) - ONLY VISIBLE IN MAP VIEW */}
         <AnimatePresence>
           {view === 'map' && (
-             <div className="absolute top-3 md:top-6 left-16 right-3 sm:left-20 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
+             <div className="absolute top-3 md:top-6 left-14 right-3 sm:left-20 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
                 <motion.div 
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
