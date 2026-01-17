@@ -284,29 +284,29 @@ export const Geoportal = () => {
                  initial={{ opacity: 0, x: 50 }}
                  animate={{ opacity: 1, x: 0 }}
                  exit={{ opacity: 0, x: 50 }}
-                 className="absolute top-6 right-6 z-[2500] pointer-events-auto"
+                 className="absolute top-3 md:top-6 right-3 md:right-6 z-[2500] pointer-events-auto"
               >
                   <motion.div 
                     animate={{ 
                         height: isDateWidgetCollapsed ? 'auto' : 'auto',
-                        width: isDateWidgetCollapsed ? 200 : 192, 
+                        width: isDateWidgetCollapsed ? 160 : 160, 
                     }}
                     transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                    className="glass-panel rounded-2xl shadow-2xl border border-white/60 dark:border-white/10 overflow-hidden flex flex-col"
-                    style={{ maxHeight: isDateWidgetCollapsed ? '60px' : '400px' }}
+                    className="glass-panel rounded-xl md:rounded-2xl shadow-2xl border border-white/60 dark:border-white/10 overflow-hidden flex flex-col"
+                    style={{ maxHeight: isDateWidgetCollapsed ? '50px' : '350px' }}
                   >
                       {/* Header (Draggable Handle) */}
-                      <div className="p-3 bg-slate-50/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5 flex items-center justify-between cursor-move active:cursor-grabbing group">
-                          <div className="flex items-center gap-2 text-slate-500 dark:text-neutral-400">
-                             <Calendar size={14} />
-                             <span className="text-[11px] font-bold uppercase tracking-wider">
+                      <div className="p-2 md:p-3 bg-slate-50/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5 flex items-center justify-between cursor-move active:cursor-grabbing group">
+                          <div className="flex items-center gap-1.5 md:gap-2 text-slate-500 dark:text-neutral-400">
+                             <Calendar size={12} className="md:w-[14px] md:h-[14px]" />
+                             <span className="text-[10px] md:text-[11px] font-bold uppercase tracking-wider">
                                 {isDateWidgetCollapsed ? `${years.length} Année(s)` : 'Période'}
                              </span>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-0.5 md:gap-1">
                             <button 
                                 onClick={() => setIsDateWidgetCollapsed(!isDateWidgetCollapsed)}
-                                className="p-1 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-neutral-200 transition-colors pointer-cursor"
+                                className="p-0.5 md:p-1 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-neutral-200 transition-colors pointer-cursor"
                                 onPointerDownCapture={(e) => e.stopPropagation()} // Prevent drag start when clicking button
                             >
                                 {isDateWidgetCollapsed ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
