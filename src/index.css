@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cameroon-green: #056B32;
+  --color-cameroon-yellow: #FFCD00;
+  --color-cameroon-red: #CE1126;
+  --font-sans: "Outfit", "Inter", system-ui, sans-serif;
+  
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-fade-in-up: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-in-right: slideInRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+  }
+  
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-white text-slate-900 dark:bg-black dark:text-neutral-200 antialiased overflow-hidden selection:bg-cameroon-green/20 selection:text-cameroon-green;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+  /* Ultra-Premium Glassmorphism - True Dark Mode */
+  .glass {
+    @apply bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl border border-white/50 dark:border-white/10 shadow-lg shadow-black/5;
+  }
+  
+  .glass-panel {
+    @apply bg-white/90 dark:bg-black/90 backdrop-blur-xl border border-slate-100 dark:border-white/10 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)];
+  }
+
+  .glass-interactive {
+    @apply bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/40 dark:border-white/5 hover:bg-white/90 dark:hover:bg-neutral-800 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer;
+  }
+
+  /* Custom Inputs */
+  .input-elegant {
+    @apply bg-white/50 border border-slate-200 rounded-full px-5 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cameroon-green/20 focus:bg-white transition-all backdrop-blur-sm shadow-sm;
+  }
+
+  /* Map Specifics */
+  .leaflet-container {
+    background: #f8fafc !important; 
+    font-family: var(--font-sans) !important;
+  }
+}
+
+/* Custom Scrollbar for Sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300/80 rounded-full hover:bg-slate-400 transition-colors;
+}
+
