@@ -228,7 +228,7 @@ export const Geoportal = () => {
 
           {/* Layer Control (Mini) */}
           <div className="pt-4 border-t border-slate-100 dark:border-white/5">
-             <button className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10">
+             <button className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-neutral-900 hover:bg-white dark:hover:bg-neutral-800 rounded-xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10">
                 <div className="flex items-center gap-3">
                     <Layers size={16} className="text-slate-400" />
                     <span className="text-xs font-semibold text-slate-600">Configuration de la carte</span>
@@ -296,8 +296,8 @@ export const Geoportal = () => {
                     style={{ maxHeight: isDateWidgetCollapsed ? '60px' : '400px' }}
                   >
                       {/* Header (Draggable Handle) */}
-                      <div className="p-3 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5 flex items-center justify-between cursor-move active:cursor-grabbing group">
-                          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                      <div className="p-3 bg-slate-50/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5 flex items-center justify-between cursor-move active:cursor-grabbing group">
+                          <div className="flex items-center gap-2 text-slate-500 dark:text-neutral-400">
                              <Calendar size={14} />
                              <span className="text-[11px] font-bold uppercase tracking-wider">
                                 {isDateWidgetCollapsed ? `${years.length} Année(s)` : 'Période'}
@@ -306,12 +306,12 @@ export const Geoportal = () => {
                           <div className="flex items-center gap-1">
                             <button 
                                 onClick={() => setIsDateWidgetCollapsed(!isDateWidgetCollapsed)}
-                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors pointer-cursor"
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-neutral-200 transition-colors pointer-cursor"
                                 onPointerDownCapture={(e) => e.stopPropagation()} // Prevent drag start when clicking button
                             >
                                 {isDateWidgetCollapsed ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
                             </button>
-                            <GripVertical size={14} className="text-slate-300 dark:text-slate-600 group-hover:text-slate-400 transition-colors" />
+                            <GripVertical size={14} className="text-slate-300 dark:text-neutral-600 group-hover:text-slate-400 transition-colors" />
                           </div>
                       </div>
                       
@@ -326,7 +326,7 @@ export const Geoportal = () => {
                                         className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all mb-0.5 ${
                                             years.includes(yr) 
                                             ? 'bg-cameroon-green/10 text-cameroon-green' 
-                                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                            : 'hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-600 dark:text-neutral-300'
                                         }`}
                                     >
                                         <span className={`text-[13px] font-mono ${years.includes(yr) ? 'font-bold' : 'font-medium'}`}>{yr}</span>
@@ -342,10 +342,10 @@ export const Geoportal = () => {
                             </div>
 
                             {/* Footer Actions */}
-                            <div className="p-2 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/50 flex justify-center">
+                            <div className="p-2 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-black/50 flex justify-center">
                                 <button 
                                     onClick={() => setIsPlaying(!isPlaying)}
-                                    className="w-full py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 shadow-sm text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-cameroon-green hover:border-cameroon-green/30 flex items-center justify-center gap-2 transition-all"
+                                    className="w-full py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-slate-200 dark:border-white/10 shadow-sm text-[11px] font-bold text-slate-600 dark:text-neutral-300 hover:text-cameroon-green hover:border-cameroon-green/30 flex items-center justify-center gap-2 transition-all"
                                 >
                                     {isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
                                     {isPlaying ? 'PAUSE' : 'ANIMER'}
@@ -437,7 +437,7 @@ export const Geoportal = () => {
                     </div>
                 </div>
             ) : (
-                <div className="w-full h-full bg-slate-50 dark:bg-slate-950 px-6 pt-24">
+                <div className="w-full h-full bg-slate-50 dark:bg-black px-6 pt-24">
                     <TabularView />
                 </div>
             )}
