@@ -31,11 +31,11 @@ export const TabularView = () => {
   const cols = pivotMode === 'years-rows' ? departments : years;
 
   return (
-    <div className="h-full w-full bg-slate-50/50 dark:bg-black px-3 md:px-8 pt-20 md:pt-32 pb-4 md:pb-8 flex flex-col items-center overflow-auto">
-       <div className="max-w-7xl w-full h-full flex flex-col space-y-4 md:space-y-6">
+    <div className="h-full w-full bg-slate-50/50 dark:bg-black p-3 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-auto">
+       <div className="w-full h-full flex flex-col space-y-4">
         
         {/* Magic Toolbar */}
-        <header className="relative z-[500] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 bg-white/60 dark:bg-neutral-900/80 backdrop-blur-md p-4 md:p-6 rounded-2xl md:rounded-3xl border border-white/60 dark:border-white/10 shadow-sm">
+        <header className="relative z-[500] flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white/60 dark:bg-[#0A0A0A]/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 dark:border-white/10 shadow-sm shrink-0">
           <div>
             <div className="flex items-center gap-2 md:gap-3 mb-1">
                 <div className="p-1.5 md:p-2 bg-cameroon-green/10 rounded-lg text-cameroon-green">
@@ -140,13 +140,13 @@ export const TabularView = () => {
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex-1 min-h-[400px] overflow-hidden bg-white/80 dark:bg-neutral-950/90 backdrop-blur-xl rounded-2xl md:rounded-3xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
+            className="flex-1 min-h-[400px] overflow-hidden bg-white/80 dark:bg-[#050505]/90 backdrop-blur-xl rounded-2xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
         >
           <div className="absolute inset-0 overflow-x-auto md:overflow-auto custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-neutral-950/95 backdrop-blur-md shadow-sm">
+              <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-[#0A0A0A]/95 backdrop-blur-md shadow-sm">
                 <tr>
-                  <th className="p-5 font-bold text-slate-400 dark:text-neutral-500 text-xs w-32 uppercase tracking-wider sticky left-0 bg-slate-50/95 dark:bg-neutral-950/95 z-20 border-b border-slate-100 dark:border-white/10">
+                  <th className="p-5 font-bold text-slate-400 dark:text-neutral-500 text-xs w-32 uppercase tracking-wider sticky left-0 bg-slate-50/95 dark:bg-[#0A0A0A]/95 z-20 border-b border-r border-slate-100 dark:border-white/10">
                     {pivotMode === 'years-rows' ? 'Période' : 'Zone Admin.'}
                   </th>
                   {cols.map((col) => (
@@ -158,8 +158,8 @@ export const TabularView = () => {
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-white/5">
                 {rows.map((row) => (
-                  <tr key={row} className="group hover:bg-blue-50/30 dark:hover:bg-cameroon-green/5 transition-colors">
-                    <td className="p-4 font-bold text-slate-700 dark:text-neutral-200 sticky left-0 bg-white/50 dark:bg-neutral-950/80 group-hover:bg-blue-50/50 dark:group-hover:bg-cameroon-green/10 backdrop-blur-sm border-r border-slate-100 dark:border-white/5 z-10 transition-colors">
+                  <tr key={row} className="group hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors">
+                    <td className="p-4 font-bold text-slate-700 dark:text-neutral-200 sticky left-0 bg-white/50 dark:bg-[#050505] group-hover:bg-blue-50/50 dark:group-hover:bg-[#0A0A0A] backdrop-blur-sm border-r border-slate-100 dark:border-white/10 z-10 transition-colors">
                         {row}
                     </td>
                     {cols.map((col) => {

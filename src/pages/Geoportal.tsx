@@ -423,7 +423,7 @@ export const Geoportal = () => {
                     </div>
                 </div>
             ) : (
-                <div className="w-full h-full bg-slate-50 dark:bg-black px-6 pt-24">
+                <div className="w-full h-full bg-slate-50 dark:bg-black">
                     <TabularView />
                 </div>
             )}
