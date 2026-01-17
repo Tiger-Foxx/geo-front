@@ -125,12 +125,7 @@ export const Geoportal = () => {
       >
         {/* Sidebar Content (Injected into the Floating Panel) */}
         <div className="p-5 flex flex-col gap-8 h-full">
-          
-          {/* Quick Stats or Overview */}
-          <div className="bg-slate-50 dark:bg-neutral-900 p-4 rounded-2xl border border-slate-100 dark:border-white/5">
-             <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-neutral-500 tracking-wider mb-1">Bassin sélectionné</div>
-             <div className="font-bold text-slate-800 dark:text-white text-lg">Cameroun Global</div>
-          </div>
+                
 
           {/* Admin Layer Control (Visible & Elegant) */}
           <div className="space-y-3">
@@ -226,16 +221,6 @@ export const Geoportal = () => {
              </div>
           </div>
 
-          {/* Layer Control (Mini) */}
-          <div className="pt-4 border-t border-slate-100 dark:border-white/5">
-             <button className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-neutral-900 hover:bg-white dark:hover:bg-neutral-800 rounded-xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10">
-                <div className="flex items-center gap-3">
-                    <Layers size={16} className="text-slate-400" />
-                    <span className="text-xs font-semibold text-slate-600">Configuration de la carte</span>
-                </div>
-                <ChevronRight size={14} className="text-slate-300" />
-             </button>
-          </div>
         </div>
       </Sidebar>
 
@@ -245,7 +230,7 @@ export const Geoportal = () => {
         {/* Top Floating Bar (Google Maps Style) - ONLY VISIBLE IN MAP VIEW */}
         <AnimatePresence>
           {view === 'map' && (
-             <div className="absolute top-3 md:top-6 left-14 right-3 sm:left-20 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
+             <div className="absolute top-14 left-2 right-2 md:top-6 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
                 <motion.div 
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -372,9 +357,10 @@ export const Geoportal = () => {
                     
                     {/* Google Style Basemap Switcher (Bottom Left) - Adjusted for Sidebar conflict */}
                     <div 
-                        className="absolute bottom-8 left-24 md:left-32 z-[1000]"
-                        onMouseEnter={() => setShowBasemapSelector(true)}
-                        onMouseLeave={() => setShowBasemapSelector(false)}
+                        className="absolute bottom-20 left-2 md:bottom-8 md:left-32 z-[1000]"
+                        onClick={() => setShowBasemapSelector(!showBasemapSelector)}
+                        onMouseEnter={() => window.innerWidth > 768 && setShowBasemapSelector(true)}
+                        onMouseLeave={() => window.innerWidth > 768 && setShowBasemapSelector(false)}
                     >
                         <motion.div 
                             layout
@@ -420,8 +406,8 @@ export const Geoportal = () => {
                         </motion.div>
                     </div>
 
-                    {/* Legend Overlay - Centered Bottom to avoid Zoom Control conflict */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[900] pointer-events-none w-full max-w-md flex justify-center">
+                    {/* Legend Overlay - Centered Bottom to avoid Zoom Control conflict - HIDDEN ON MOBILE */}
+                    <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-[900] pointer-events-none w-full max-w-md justify-center">
                         <motion.div 
                             initial={{ y: 50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}

@@ -55,11 +55,11 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
   ];
 
   return (
-    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex gap-2 md:gap-4">
+    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex flex-col md:flex-row gap-2 md:gap-4 pointer-events-none">
       {/* Mobile Toggle Button - Always visible on mobile */}
       <button 
         onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-        className="md:hidden pointer-events-auto p-2.5 rounded-xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border border-slate-200 dark:border-white/20 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
+        className="md:hidden pointer-events-auto w-10 h-10 flex items-center justify-center rounded-xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border border-slate-200 dark:border-white/20 shadow-lg text-slate-900 dark:text-white z-[3010]"
       >
         {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
@@ -133,7 +133,8 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
                             onThemeChange(item.id as ThemeMode);
                             if (!activePanel) onTogglePanel();
                         }
-                        setIsMobileSidebarOpen(false);
+                        // Keep sidebar open on mobile so user can see the panel
+                        // setIsMobileSidebarOpen(false); 
                     }}
                     className={clsx(
                     "group relative p-2 md:p-3 rounded-lg md:rounded-xl transition-all duration-300 flex justify-center items-center",
