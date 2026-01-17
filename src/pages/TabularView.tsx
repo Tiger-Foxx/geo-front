@@ -31,44 +31,44 @@ export const TabularView = () => {
   const cols = pivotMode === 'years-rows' ? departments : years;
 
   return (
-    <div className="h-full w-full bg-slate-50/50 dark:bg-black p-8 pt-32 flex flex-col items-center">
-       <div className="max-w-7xl w-full h-full flex flex-col space-y-6">
+    <div className="h-full w-full bg-slate-50/50 dark:bg-black px-3 md:px-8 pt-20 md:pt-32 pb-4 md:pb-8 flex flex-col items-center overflow-auto">
+       <div className="max-w-7xl w-full flex flex-col space-y-4 md:space-y-6">
         
         {/* Magic Toolbar */}
-        <header className="relative z-[500] flex flex-col md:flex-row justify-between items-end md:items-center gap-4 bg-white/60 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-3xl border border-white/60 dark:border-white/10 shadow-sm">
+        <header className="relative z-[500] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 bg-white/60 dark:bg-neutral-900/80 backdrop-blur-md p-4 md:p-6 rounded-2xl md:rounded-3xl border border-white/60 dark:border-white/10 shadow-sm">
           <div>
-            <div className="flex items-center gap-3 mb-1">
-                <div className="p-2 bg-cameroon-green/10 rounded-lg text-cameroon-green">
-                    <BarChart3 size={20} />
+            <div className="flex items-center gap-2 md:gap-3 mb-1">
+                <div className="p-1.5 md:p-2 bg-cameroon-green/10 rounded-lg text-cameroon-green">
+                    <BarChart3 size={18} className="md:w-[20px] md:h-[20px]" />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Matrice Économique</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Matrice Économique</h1>
             </div>
-            <p className="text-slate-500 dark:text-neutral-400 text-sm pl-12">Analyse croisée des volumes par bassin</p>
+            <p className="text-slate-500 dark:text-neutral-400 text-xs md:text-sm pl-8 md:pl-12">Analyse croisée des volumes par bassin</p>
           </div>
           
-          <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex flex-wrap gap-2 md:gap-3 items-center w-full md:w-auto">
              <div className="flex bg-slate-100/80 dark:bg-neutral-800/80 p-1 rounded-xl">
                 <button 
                     onClick={() => setPivotMode('years-rows')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${pivotMode === 'years-rows' ? 'bg-white dark:bg-neutral-700 shadow text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-neutral-400'}`}
+                    className={`px-2 md:px-3 py-1 md:py-1.5 text-xs font-semibold rounded-lg transition-all ${pivotMode === 'years-rows' ? 'bg-white dark:bg-neutral-700 shadow text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-neutral-400'}`}
                 >
                     Années en Ligne
                 </button>
                  <button 
                     onClick={() => setPivotMode('dept-rows')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${pivotMode === 'dept-rows' ? 'bg-white dark:bg-neutral-700 shadow text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-neutral-400'}`}
+                    className={`px-2 md:px-3 py-1 md:py-1.5 text-xs font-semibold rounded-lg transition-all ${pivotMode === 'dept-rows' ? 'bg-white dark:bg-neutral-700 shadow text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-neutral-400'}`}
                 >
                     Départ. en Ligne
                 </button>
              </div>
 
-             <div className="h-8 w-px bg-slate-200 dark:bg-neutral-700 mx-2" />
+             <div className="h-6 w-px bg-slate-200 dark:bg-neutral-700 mx-1 md:mx-2" />
 
              {/* Custom Region Selector */}
-             <div className="relative z-50">
+             <div className="relative z-50 flex-1 md:flex-none w-full md:w-auto">
                 <button
                     onClick={() => setIsRegionDropdownOpen(!isRegionDropdownOpen)}
-                    className={`flex items-center gap-3 bg-white dark:bg-neutral-900 border shadow-sm rounded-xl px-4 py-2 text-sm font-semibold transition-all outline-none ${
+                    className={`w-full md:w-auto flex items-center gap-2 md:gap-3 bg-white dark:bg-neutral-900 border shadow-sm rounded-xl px-3 md:px-4 py-2 text-xs md:text-sm font-semibold transition-all outline-none ${
                         isRegionDropdownOpen 
                         ? 'border-cameroon-green ring-2 ring-cameroon-green/10 text-cameroon-green' 
                         : 'border-slate-200 dark:border-white/10 text-slate-700 dark:text-neutral-200 hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-50 dark:hover:bg-neutral-800'
@@ -119,11 +119,11 @@ export const TabularView = () => {
                 </AnimatePresence>
              </div>
              
-             <div className="relative group">
+             <div className="relative group flex-1 md:flex-none w-full md:w-auto">
                 <select 
                 value={selectedProduct} 
                 onChange={(e) => setSelectedProduct(e.target.value)}
-                className="appearance-none bg-cameroon-green text-white border-none shadow-lg shadow-cameroon-green/20 rounded-xl px-4 py-2 pr-8 text-sm font-medium outline-none cursor-pointer hover:bg-green-800 transition-colors"
+                className="w-full appearance-none bg-cameroon-green text-white border-none shadow-lg shadow-cameroon-green/20 rounded-xl px-3 md:px-4 py-2 pr-8 text-xs md:text-sm font-medium outline-none cursor-pointer hover:bg-green-800 transition-colors"
                 >
                 {CROPS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -131,7 +131,7 @@ export const TabularView = () => {
              </div>
 
              <button className="p-2 text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-200 hover:bg-white dark:hover:bg-neutral-800 rounded-xl transition-all" title="Exporter CSV">
-                 <Download size={20} />
+                 <Download size={18} className="md:w-[20px] md:h-[20px]" />
              </button>
           </div>
         </header>
@@ -140,9 +140,9 @@ export const TabularView = () => {
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex-1 overflow-hidden bg-white/80 dark:bg-neutral-950/90 backdrop-blur-xl rounded-3xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
+            className="flex-1 overflow-hidden bg-white/80 dark:bg-neutral-950/90 backdrop-blur-xl rounded-2xl md:rounded-3xl border border-white dark:border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] relative"
         >
-          <div className="absolute inset-0 overflow-auto custom-scrollbar">
+          <div className="absolute inset-0 overflow-x-auto md:overflow-auto custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-neutral-950/95 backdrop-blur-md shadow-sm">
                 <tr>

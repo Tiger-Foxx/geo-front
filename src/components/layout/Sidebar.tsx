@@ -26,6 +26,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
     const saved = localStorage.getItem('fox_theme');
     return saved === 'dark';
   });
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
@@ -54,7 +55,27 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
   ];
 
   return (
-    <div className="fixed inset-y-4 left-4 z-[3000] flex gap-4 pointer-events-none">
+    <div className="fixed inset-y-4 left-4 z-[3000] flex gap-2 md:gap-4 pointer-events-none md:pointer-events-auto">
+      {/* Mobile Toggle Button */}
+      <button 
+        onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+        className="md:hidden pointer-events-auto p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-white dark:border-white/10 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
+      >
+        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[3005]"
+          />
+        )}
+      </AnimatePresence>
       {/* 1. Thin Utility Dock (The "Apple" Dock) */}
       <motion.div 
          initial={{ x: -20, opacity: 0 }}
@@ -157,7 +178,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             animate={{ x: 0, opacity: 1, scale: 1 }}
             exit={{ x: -20, opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="w-80 h-full glass-panel rounded-3xl flex flex-col overflow-hidden pointer-events-auto"
+            className="fixed md:relative w-[85vw] sm:w-72 md:w-80 h-[85vh] md:h-full glass-panel rounded-3xl flex flex-col overflow-hidden pointer-events-auto z-[3008] md:z-auto bottom-4 left-4 md:bottom-auto md:left-auto"
           >
             {/* Header */}
             <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">
