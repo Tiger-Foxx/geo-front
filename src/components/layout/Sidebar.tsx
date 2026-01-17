@@ -55,13 +55,13 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
   ];
 
   return (
-    <div className="fixed inset-y-4 left-4 z-[3000] flex gap-2 md:gap-4 pointer-events-none md:pointer-events-auto">
+    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex gap-2 md:gap-4 pointer-events-none">
       {/* Mobile Toggle Button */}
       <button 
         onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-        className="md:hidden pointer-events-auto p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-white dark:border-white/10 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
+        className="md:hidden pointer-events-auto p-2.5 rounded-xl md:rounded-2xl bg-white dark:bg-neutral-900 border border-white dark:border-white/10 shadow-lg hover:scale-110 transition-all text-slate-900 dark:text-white z-[3010]"
       >
-        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+        {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
       </button>
 
       {/* Mobile Overlay */}
@@ -80,11 +80,11 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
       <motion.div 
          initial={{ x: -20, opacity: 0 }}
          animate={{ x: 0, opacity: 1 }}
-         className="w-16 h-full flex flex-col items-center py-4 gap-4 glass rounded-3xl pointer-events-auto shadow-2xl relative z-20"
+         className={`w-14 md:w-16 h-full flex-col items-center py-3 md:py-4 gap-3 md:gap-4 glass rounded-2xl md:rounded-3xl pointer-events-auto shadow-2xl relative z-20 ${isMobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}
       >
         {/* Brand - Coat of Arms */}
         <div 
-           className="w-12 h-12 rounded-2xl mb-6 flex items-center justify-center shadow-lg shadow-slate-900/10 dark:shadow-black/50 bg-white dark:bg-neutral-900 p-1.5 hover:scale-105 transition-transform cursor-pointer group border border-slate-100 dark:border-white/5"
+           className="w-10 md:w-12 h-10 md:h-12 rounded-xl md:rounded-2xl mb-4 md:mb-6 flex items-center justify-center shadow-lg shadow-slate-900/10 dark:shadow-black/50 bg-white dark:bg-neutral-900 p-1.5 hover:scale-105 transition-transform cursor-pointer group border border-slate-100 dark:border-white/5"
            onClick={() => navigate('/')}
         >
            <img 
@@ -95,33 +95,33 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
         </div>
         
         {/* Core View Switcher (Map vs Table) */}
-        <div className="p-1.5 bg-slate-100/50 dark:bg-neutral-900/50 rounded-2xl flex flex-col gap-2 mb-4 backdrop-blur-sm border border-slate-200/50 dark:border-white/5">
+        <div className="p-1 md:p-1.5 bg-slate-100/50 dark:bg-neutral-900/50 rounded-xl md:rounded-2xl flex flex-col gap-1.5 md:gap-2 mb-3 md:mb-4 backdrop-blur-sm border border-slate-200/50 dark:border-white/5">
             <button 
                 onClick={() => onViewChange('map')}
                 className={clsx(
-                    "p-2 rounded-xl transition-all duration-300",
+                    "p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all duration-300",
                     view === 'map' ? "bg-white dark:bg-neutral-800 text-cameroon-green shadow-md dark:shadow-black/50" : "text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300"
                 )}
                 title="Vue Carte"
             >
-                <Map size={20} />
+                <Map size={18} className="md:w-[20px] md:h-[20px]" />
             </button>
              <button 
                 onClick={() => onViewChange('table')}
                  className={clsx(
-                    "p-2 rounded-xl transition-all duration-300",
+                    "p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all duration-300",
                     view === 'table' ? "bg-white dark:bg-neutral-800 text-cameroon-green shadow-md dark:shadow-black/50" : "text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300"
                 )}
                 title="Vue Tabulaire"
             >
-                <Table size={20} />
+                <Table size={18} className="md:w-[20px] md:h-[20px]" />
             </button>
         </div>
 
-        <div className="w-8 h-[1px] bg-slate-200 dark:bg-neutral-800" />
+        <div className="w-6 md:w-8 h-[1px] bg-slate-200 dark:bg-neutral-800" />
 
         {/* Thematic Navigation */}
-        <div className="flex flex-col gap-3 w-full px-2">
+        <div className="flex flex-col gap-2 md:gap-3 w-full px-1.5 md:px-2">
              {mainNav.map((item) => (
                 <button
                     key={item.id}
@@ -132,40 +132,41 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
                             onThemeChange(item.id as ThemeMode);
                             if (!activePanel) onTogglePanel();
                         }
+                        setIsMobileSidebarOpen(false);
                     }}
                     className={clsx(
-                    "group relative p-3 rounded-xl transition-all duration-300 flex justify-center items-center",
+                    "group relative p-2 md:p-3 rounded-lg md:rounded-xl transition-all duration-300 flex justify-center items-center",
                     activeTheme === item.id 
                         ? "bg-cameroon-green text-white shadow-lg shadow-cameroon-green/25" 
                         : "text-slate-400 dark:text-neutral-500 hover:bg-white dark:hover:bg-neutral-800 hover:text-cameroon-green dark:hover:text-cameroon-green hover:shadow-sm"
                     )}
                 >
-                    <item.icon size={22} strokeWidth={1.5} />
+                    <item.icon size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />
                     
                     {/* Tooltip - z-index boosted and absolute positioning tweaked */}
-                    <span className="absolute left-16 px-3 py-1.5 bg-slate-900 dark:bg-neutral-800 text-white dark:text-neutral-200 text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-all translate-x-1 group-hover:translate-x-0 whitespace-nowrap pointer-events-none z-[9999] shadow-xl border border-white/10">
+                    <span className="hidden md:block absolute left-16 px-3 py-1.5 bg-slate-900 dark:bg-neutral-800 text-white dark:text-neutral-200 text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-all translate-x-1 group-hover:translate-x-0 whitespace-nowrap pointer-events-none z-[9999] shadow-xl border border-white/10">
                         {item.label}
                     </span>
 
                     {activeTheme === item.id && (
-                        <motion.div layoutId="active-indicator" className="absolute -right-2 w-1 h-3 bg-cameroon-green rounded-full" />
+                        <motion.div layoutId="active-indicator" className="absolute -right-1.5 md:-right-2 w-0.5 md:w-1 h-2 md:h-3 bg-cameroon-green rounded-full" />
                     )}
                 </button>
             ))}
         </div>
         
-        <div className="mt-auto flex flex-col gap-4">
+        <div className="mt-auto flex flex-col gap-3 md:gap-4">
              <button 
                 onClick={toggleTheme}
-                className="p-3 text-slate-400 dark:text-neutral-500 hover:text-cameroon-green dark:hover:text-yellow-400 transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-xl"
+                className="p-2 md:p-3 text-slate-400 dark:text-neutral-500 hover:text-cameroon-green dark:hover:text-yellow-400 transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-lg md:rounded-xl"
             >
-                {isDark ? <Sun size={22} strokeWidth={1.5} /> : <Moon size={22} strokeWidth={1.5} />}
+                {isDark ? <Sun size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} /> : <Moon size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />}
             </button>
              <button 
                 onClick={onSettingsClick}
-                className="p-3 text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-white transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-xl"
+                className="p-2 md:p-3 text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-white transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-lg md:rounded-xl"
             >
-                <Settings size={22} strokeWidth={1.5} />
+                <Settings size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />
             </button>
         </div>
       </motion.div>
@@ -178,7 +179,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             animate={{ x: 0, opacity: 1, scale: 1 }}
             exit={{ x: -20, opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed md:relative w-[85vw] sm:w-72 md:w-80 h-[85vh] md:h-full glass-panel rounded-3xl flex flex-col overflow-hidden pointer-events-auto z-[3008] md:z-auto bottom-4 left-4 md:bottom-auto md:left-auto"
+            className={`${isMobileSidebarOpen ? 'fixed' : 'hidden md:flex'} md:relative w-[90vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3008] md:z-auto bottom-2 left-2 md:bottom-auto md:left-auto`}
           >
             {/* Header */}
             <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">
