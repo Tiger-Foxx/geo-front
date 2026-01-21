@@ -17,14 +17,22 @@ export const TabularView = () => {
   // Helper to get formatted value and fake trend
   const getCellData = (dept: string, year: number) => {
     const record = data.find(d => d.department === dept && d.season_year === year && d.product === selectedProduct);
-    const val = record?.value || 0;
+    const val = record?.value;
+    const status = record?.status || 'missing';
     
-    // Fake trend logic for demo
-    const prevYearVal = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct)?.value || val;
-    const trend = val > prevYearVal ? 'up' : val < prevYearVal ? 'down' : 'stable';
-    const percent = prevYearVal ? ((val - prevYearVal) / prevYearVal) * 100 : 0;
+    // Fake trend logic for demo (only if current val exists)
+    const prevRecord = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct);
+    const prevYearVal = prevRecord?.value;
     
-    return { val, trend, percent };
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    let percent = 0;
+
+    if (val && prevYearVal) {
+        trend = val > prevYearVal ? 'up' : val < prevYearVal ? 'down' : 'stable';
+        percent = ((val - prevYearVal) / prevYearVal) * 100;
+    }
+    
+    return { val, status, trend, percent };
   };
 
   const rows = pivotMode === 'years-rows' ? years : departments;
@@ -165,30 +173,35 @@ export const TabularView = () => {
                     {cols.map((col) => {
                       const dept = pivotMode === 'years-rows' ? col as string : row as string;
                       const year = pivotMode === 'years-rows' ? row as number : col as number;
-                      const { val, trend, percent } = getCellData(dept, year);
+                      const { val, status, trend, percent } = getCellData(dept, year);
 
                       return (
-                        <td key={col} className="p-3 border-l border-slate-50 dark:border-white/5 text-center relative">
+                        <td key={col} className={`p-3 border-l border-slate-50 dark:border-white/5 text-center relative ${status === 'missing' ? 'bg-slate-50/50 dark:bg-white/[0.02]' : ''}`}>
                           <div className="flex flex-col items-center justify-center gap-0.5">
-                            <span className="text-sm font-medium text-slate-800 dark:text-neutral-200 tabular-nums tracking-tight">
-                                {val > 0 ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-'}
-                            </span>
-                            
-                            {val > 0 && (
-                                <div className={`flex items-center text-[10px] font-medium gap-0.5 ${
-                                    trend === 'up' ? 'text-emerald-600 dark:text-emerald-400' : trend === 'down' ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400 dark:text-neutral-500'
-                                }`}>
-                                    {trend === 'up' ? <ArrowUpRight size={10} /> : trend === 'down' ? <ArrowDownRight size={10} /> : <ArrowRight size={10} />}
-                                    <span>{Math.abs(percent).toFixed(0)}%</span>
-                                </div>
-                            )}
+                            {status === 'missing' || val === null || val === undefined ? (
+                                <span className="text-[10px] font-medium text-slate-300 dark:text-neutral-600 italic">N/A</span>
+                            ) : (
+                                <>
+                                    <span className={`text-sm font-medium tabular-nums tracking-tight ${status === 'estimated' ? 'text-cameroon-yellow' : 'text-slate-800 dark:text-neutral-200'}`}>
+                                        {val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {status === 'estimated' && '*'}
+                                    </span>
+                                    
+                                    {trend !== 'stable' && (
+                                        <div className={`flex items-center text-[10px] font-medium gap-0.5 ${
+                                            trend === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'
+                                        }`}>
+                                            {trend === 'up' ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+                                            <span>{Math.abs(percent).toFixed(0)}%</span>
+                                        </div>
+                                    )}
 
-                            {/* Micro Chart Background - optional advanced feature */}
-                            {val > 0 && (
-                                <div 
-                                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-cameroon-green/20 dark:bg-cameroon-green/40" 
-                                    style={{ width: `${Math.min(100, (val / 5000) * 100)}%`, opacity: 0.5 }} 
-                                />
+                                    {/* Micro Chart Background */}
+                                    <div 
+                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-cameroon-green/20 dark:bg-cameroon-green/40" 
+                                        style={{ width: `${Math.min(100, ((val || 0) / 5000) * 100)}%`, opacity: 0.5 }} 
+                                    />
+                                </>
                             )}
                           </div>
                         </td>

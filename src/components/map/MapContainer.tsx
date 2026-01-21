@@ -43,7 +43,7 @@ const MOCK_GEOJSON_DEPARTMENTS = [
   // Add more conceptual squares for demo purposes if needed
 ];
 
-export const MapContainer = ({ data, year, product, indicator, basemap = 'light' }: MapContainerProps) => {
+export const MapContainer = ({ data, year, product, indicator, basemap = 'osm' }: MapContainerProps) => {
   const center: [number, number] = [7.3697, 12.3547]; // Cameroon Center
   const zoom = 6;
 
@@ -52,7 +52,7 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'light'
     const map = new Map<string, number>();
     data.forEach(d => {
       if (d.season_year === year && d.product === product && d.indicator === indicator) {
-        map.set(d.department, d.value);
+        map.set(d.department, d.value ?? 0);
       }
     });
     return map;

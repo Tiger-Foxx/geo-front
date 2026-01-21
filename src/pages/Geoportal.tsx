@@ -22,7 +22,7 @@ export const Geoportal = () => {
   
   // Basemap & LocalStorage
   const [basemap, setBasemap] = useState<BasemapType>(() => {
-     return localStorage.getItem('fox_basemap') as BasemapType || 'light';
+     return localStorage.getItem('fox_basemap') as BasemapType || 'osm';
   });
   const [showBasemapSelector, setShowBasemapSelector] = useState(false);
   const [isDateWidgetCollapsed, setIsDateWidgetCollapsed] = useState(true);
@@ -42,7 +42,7 @@ export const Geoportal = () => {
       const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
       if (!userOverride) {
         const isDark = document.documentElement.classList.contains('dark');
-        setBasemap(isDark ? 'dark' : 'light');
+        setBasemap(isDark ? 'dark' : 'osm');
       }
     };
     
@@ -50,7 +50,7 @@ export const Geoportal = () => {
     const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
     if (!userOverride) {
       const isDark = localStorage.getItem('fox_theme') === 'dark';
-      setBasemap(isDark ? 'dark' : 'light');
+      setBasemap(isDark ? 'dark' : 'osm');
     }
 
     window.addEventListener('theme-change', handleThemeChange);
@@ -370,7 +370,12 @@ export const Geoportal = () => {
                             {!showBasemapSelector ? (
                                 <motion.div layoutId="preview" className="w-16 h-16 relative">
                                     <img 
-                                        src={basemap === 'satellite' ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/4/8/8" : (basemap === 'dark' ? "https://a.basemaps.cartocdn.com/dark_all/4/8/8.png" : "https://a.basemaps.cartocdn.com/light_all/4/8/8.png")} 
+                                        src={
+                                            basemap === 'satellite' ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/4/8/8" : 
+                                            basemap === 'dark' ? "https://a.basemaps.cartocdn.com/dark_all/4/8/8.png" : 
+                                            basemap === 'osm' ? "https://a.tile.openstreetmap.org/4/8/8.png" :
+                                            "https://a.basemaps.cartocdn.com/light_all/4/8/8.png"
+                                        } 
                                         className="w-full h-full object-cover" 
                                         alt="Basemap" 
                                     />

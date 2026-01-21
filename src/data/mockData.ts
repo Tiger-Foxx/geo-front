@@ -1,12 +1,13 @@
 export interface DataPoint {
-  fnid: string; // Region + Department Code (e.g., "CM-CE-MFOU")
+  fnid: string;
   region: string;
   department: string;
   product: string;
   season_year: number;
   indicator: 'Production' | 'Area harvested' | 'Yield';
-  value: number;
+  value: number | null; // Nullable for missing data
   unit: string;
+  status: 'confirmed' | 'estimated' | 'missing';
 }
 
 export const REGIONS_DEPARTMENTS: Record<string, string[]> = {
@@ -36,30 +37,31 @@ export const generateMockData = (): DataPoint[] => {
       const fnid = `CM-${region.substring(0, 2).toUpperCase()}-${dept.substring(0, 3).toUpperCase()}`;
       
       YEARS.forEach(year => {
+        // Randomly simulate missing data for recent years or specific regions
+        const isMissing = Math.random() > 0.95; 
+        const isEstimated = Math.random() > 0.8;
+
         // Agriculture
         CROPS.forEach(crop => {
-           // Simulate realistic data with some randomness but consistent trends
            const baseValue = (year - 1980) * 10 + Math.random() * 100;
-           
+           const status = isMissing ? 'missing' : (isEstimated ? 'estimated' : 'confirmed');
+           const val = isMissing ? null : baseValue * 5;
+
            data.push({
              fnid, region, department: dept, product: crop, season_year: year,
-             indicator: 'Production', value: baseValue * 5, unit: 'mt'
-           });
-           data.push({
-             fnid, region, department: dept, product: crop, season_year: year,
-             indicator: 'Area harvested', value: baseValue * 2, unit: 'ha'
-           });
-           data.push({
-             fnid, region, department: dept, product: crop, season_year: year,
-             indicator: 'Yield', value: (baseValue * 5) / (baseValue * 2 || 1), unit: 'mt/ha'
+             indicator: 'Production', value: val, unit: 'mt', status
            });
         });
 
         // Livestock
         LIVESTOCK.forEach(animal => {
+           const status = isMissing ? 'missing' : 'confirmed';
            data.push({
              fnid, region, department: dept, product: animal, season_year: year,
-             indicator: 'Production', value: Math.floor(Math.random() * 5000) + 1000, unit: 'têtes'
+             indicator: 'Production', 
+             value: status === 'missing' ? null : Math.floor(Math.random() * 5000) + 1000, 
+             unit: 'têtes',
+             status
            });
         });
       });
