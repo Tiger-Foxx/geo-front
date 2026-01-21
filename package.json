@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.26.2",
     "leaflet": "^1.9.4",
+    "leaflet-fullscreen": "^1.0.2",
+    "leaflet.locatecontrol": "^0.86.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

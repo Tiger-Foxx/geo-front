@@ -1,10 +1,13 @@
-import { MapContainer as LeafletMap, TileLayer, GeoJSON, ZoomControl, useMap } from 'react-leaflet';
+import { MapContainer as LeafletMap, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-fullscreen/dist/leaflet.fullscreen.css';
 import type { DataPoint } from '../../data/mockData';
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import L from 'leaflet';
+import 'leaflet-fullscreen';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
 
 // Fix default icon
 let DefaultIcon = L.icon({
@@ -15,6 +18,8 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+export type BasemapType = 'light' | 'dark' | 'satellite' | 'terrain' | 'osm';
+
 interface MapContainerProps {
   data: DataPoint[];
   year: number;
@@ -23,9 +28,8 @@ interface MapContainerProps {
   basemap?: BasemapType;
   adminLevel?: 'region' | 'department' | 'commune';
   onFeatureClick?: (feature: any) => void;
+  onMapReady?: (map: L.Map) => void;
 }
-
-export type BasemapType = 'light' | 'dark' | 'satellite' | 'terrain' | 'osm';
 
 const BASEMAP_URLS: Record<BasemapType, string> = {
     light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
@@ -35,7 +39,7 @@ const BASEMAP_URLS: Record<BasemapType, string> = {
     osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 };
 
-// Cameroon Regions GeoJSON (Simplified placeholder - real data should come from files)
+// Cameroon Regions GeoJSON
 const CAMEROON_REGIONS_GEOJSON = {
   type: "FeatureCollection",
   features: [
@@ -52,18 +56,16 @@ const CAMEROON_REGIONS_GEOJSON = {
   ]
 } as any;
 
-// Dynamic color scale based on data range
+// Dynamic color scale
 const getColorScale = (value: number | null, min: number, max: number, isDark: boolean): string => {
-  if (value === null) return isDark ? '#374151' : '#E5E7EB'; // Unavailable: gray
-  if (value === 0) return isDark ? '#1F2937' : '#F9FAFB'; // Zero: very light
+  if (value === null) return isDark ? '#374151' : '#E5E7EB';
+  if (value === 0) return isDark ? '#1F2937' : '#F9FAFB';
   
   const normalized = Math.min(1, Math.max(0, (value - min) / (max - min || 1)));
-  
-  // Cameroon-themed gradient: Yellow -> Green -> Dark Green
   const colors = [
-    { r: 255, g: 205, b: 0 },   // Yellow (#FFCD00)
-    { r: 76, g: 154, b: 42 },   // Light Green
-    { r: 5, g: 107, b: 50 },    // Cameroon Green (#056B32)
+    { r: 255, g: 205, b: 0 },
+    { r: 76, g: 154, b: 42 },
+    { r: 5, g: 107, b: 50 },
   ];
   
   const idx = normalized * (colors.length - 1);
@@ -78,7 +80,7 @@ const getColorScale = (value: number | null, min: number, max: number, isDark: b
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-// Component to handle map updates when props change
+// Component to handle map updates
 const MapUpdater = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
   const map = useMap();
   useEffect(() => {
@@ -87,50 +89,94 @@ const MapUpdater = ({ center, zoom }: { center: [number, number]; zoom: number }
   return null;
 };
 
-// Hover Info Panel Component
-const HoverInfoPanel = ({ feature, value, unit, year, status }: { 
-  feature: any; 
-  value: number | null; 
+// Fullscreen Control removed to use manual trigger via MapTools
+
+// CURSOR-FOLLOWING TOOLTIP
+interface TooltipData {
+  name: string;
+  capital?: string;
+  value: number | null;
+  status: string;
+}
+
+const CursorTooltip = ({ data, mousePos, unit, year }: { 
+  data: TooltipData | null; 
+  mousePos: { x: number; y: number };
   unit: string;
   year: number;
-  status: string;
 }) => {
-  if (!feature) return null;
+  if (!data) return null;
+  
+  // Offset tooltip from cursor
+  const offsetX = 20;
+  const offsetY = 20;
   
   return (
-    <div className="absolute top-4 right-4 z-[1500] glass-panel p-4 rounded-xl shadow-2xl min-w-[200px] pointer-events-none animate-in fade-in slide-in-from-right-2 duration-200">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-3 h-3 rounded-full bg-cameroon-green" />
-        <h3 className="font-bold text-slate-900 dark:text-white text-sm">{feature.properties.name}</h3>
-      </div>
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-500 dark:text-neutral-400">Année</span>
-          <span className="font-mono font-medium text-slate-700 dark:text-neutral-200">{year}</span>
+    <div 
+      className="fixed z-[99999] pointer-events-none"
+      style={{ 
+        left: mousePos.x + offsetX, 
+        top: mousePos.y + offsetY,
+        transform: 'translate(0, 0)'
+      }}
+    >
+      <div className="glass-panel px-4 py-3 rounded-xl shadow-2xl border border-white/50 dark:border-white/10 backdrop-blur-xl min-w-[180px] animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100 dark:border-white/5">
+          <div className="w-2.5 h-2.5 rounded-full bg-cameroon-green shadow-sm animate-pulse" />
+          <div>
+            <h4 className="font-bold text-slate-800 dark:text-white text-sm leading-tight">{data.name}</h4>
+            {data.capital && (
+              <span className="text-[9px] text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
+                {data.capital}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-500 dark:text-neutral-400">Valeur</span>
-          <span className={`font-mono font-bold ${status === 'unavailable' ? 'text-slate-400 italic' : value === 0 ? 'text-slate-400' : 'text-cameroon-green'}`}>
-            {status === 'unavailable' ? 'Indisponible' : value === 0 ? '0' : `${value?.toLocaleString('fr-FR')} ${unit}`}
+        
+        {/* Value */}
+        <div className="flex justify-between items-baseline gap-4">
+          <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-medium">{year}</span>
+          <span className={`font-mono text-sm font-bold ${
+            data.status === 'unavailable' ? 'text-slate-400 italic' 
+            : data.value === 0 ? 'text-slate-400' 
+            : 'text-cameroon-green'
+          }`}>
+            {data.status === 'unavailable' ? 'N/A' : data.value === 0 ? '0' : data.value?.toLocaleString('fr-FR')}
+            {data.status !== 'unavailable' && data.value !== 0 && (
+              <span className="text-[9px] text-slate-400 ml-1 font-normal">{unit}</span>
+            )}
           </span>
         </div>
-        {feature.properties.capital && (
-          <div className="flex justify-between text-xs pt-1 border-t border-slate-100 dark:border-white/5">
-            <span className="text-slate-500 dark:text-neutral-400">Chef-lieu</span>
-            <span className="text-slate-600 dark:text-neutral-300">{feature.properties.capital}</span>
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', adminLevel = 'region', onFeatureClick }: MapContainerProps) => {
+// Mouse Position Tracker
+const MouseTracker = ({ onMouseMove }: { onMouseMove: (pos: { x: number; y: number }) => void }) => {
+  useMapEvents({
+    mousemove: (e) => {
+      onMouseMove({ x: e.originalEvent.clientX, y: e.originalEvent.clientY });
+    }
+  });
+  return null;
+};
+
+export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', adminLevel = 'region', onFeatureClick, onMapReady }: MapContainerProps) => {
   const center: [number, number] = [7.3697, 12.3547];
   const zoom = 6;
-  const [hoveredFeature, setHoveredFeature] = useState<any>(null);
-  const [hoveredValue, setHoveredValue] = useState<number | null>(null);
-  const [hoveredStatus, setHoveredStatus] = useState<string>('confirmed');
+  const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  
+  // Capture map instance
+  const MapInstanceCapture = () => {
+    const map = useMap();
+    useEffect(() => {
+        if (onMapReady) onMapReady(map);
+    }, [map, onMapReady]);
+    return null;
+  };
   
   const isDark = useMemo(() => {
     if (typeof document !== 'undefined') {
@@ -139,19 +185,17 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
     return false;
   }, []);
 
-  // Aggregate data by selected admin level (region or department)
+  // Aggregate data
   const aggregatedData = useMemo(() => {
     const map = new Map<string, { value: number | null; status: string; count: number }>();
     
     data.forEach(d => {
       if (d.season_year === year && d.product === product && d.indicator === indicator) {
-        // Use region or department based on adminLevel
         const key = adminLevel === 'department' ? d.department : d.region;
         const existing = map.get(key);
         if (!existing) {
           map.set(key, { value: d.value, status: d.status, count: 1 });
         } else {
-          // Aggregate values
           if (d.value !== null && existing.value !== null) {
             map.set(key, { 
               value: existing.value + d.value, 
@@ -166,7 +210,7 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
     return map;
   }, [data, year, product, indicator, adminLevel]);
 
-  // Get min/max for color scaling
+  // Min/Max
   const { min, max } = useMemo(() => {
     const values = Array.from(aggregatedData.values())
       .filter(v => v.value !== null && v.value > 0)
@@ -177,37 +221,39 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
     };
   }, [aggregatedData]);
 
-  // Get unit for display
+  // Unit
   const unit = useMemo(() => {
     const sample = data.find(d => d.product === product && d.indicator === indicator);
     return sample?.unit || 'tonnes';
   }, [data, product, indicator]);
 
-  // GeoJSON style function
+  // GeoJSON style
   const getFeatureStyle = useCallback((feature: any) => {
     const featureName = feature.properties.name;
     const featureInfo = aggregatedData.get(featureName);
     const value = featureInfo?.value ?? null;
-    const isHovered = hoveredFeature?.properties?.name === featureName;
     
     return {
       fillColor: getColorScale(value, min, max, isDark),
-      fillOpacity: isHovered ? 0.9 : 0.7,
-      weight: isHovered ? 3 : 1.5,
+      fillOpacity: 0.7,
+      weight: 1.5,
       opacity: 1,
-      color: isHovered ? '#056B32' : (isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)'),
+      color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)',
       dashArray: featureInfo?.status === 'unavailable' ? '4, 4' : undefined,
     };
-  }, [aggregatedData, min, max, isDark, hoveredFeature]);
+  }, [aggregatedData, min, max, isDark]);
 
-  // Event handlers for GeoJSON features
+  // Event handlers
   const onEachFeature = useCallback((feature: any, layer: L.Layer) => {
     layer.on({
       mouseover: (e: L.LeafletMouseEvent) => {
         const featureInfo = aggregatedData.get(feature.properties.name);
-        setHoveredFeature(feature);
-        setHoveredValue(featureInfo?.value ?? null);
-        setHoveredStatus(featureInfo?.status || 'unavailable');
+        setTooltipData({
+          name: feature.properties.name,
+          capital: feature.properties.capital,
+          value: featureInfo?.value ?? null,
+          status: featureInfo?.status || 'unavailable'
+        });
         
         const target = e.target as L.Path;
         target.setStyle({
@@ -218,75 +264,73 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
         target.bringToFront();
       },
       mouseout: (e: L.LeafletMouseEvent) => {
-        setHoveredFeature(null);
+        setTooltipData(null);
         const target = e.target as L.Path;
         target.setStyle(getFeatureStyle(feature));
       },
       click: () => {
-        if (onFeatureClick) {
-          onFeatureClick(feature);
-        }
+        if (onFeatureClick) onFeatureClick(feature);
       }
     });
   }, [aggregatedData, getFeatureStyle, onFeatureClick]);
 
   return (
-    <div className="relative h-full w-full">
-      <LeafletMap 
-        center={center} 
-        zoom={zoom} 
-        scrollWheelZoom={true} 
-        zoomControl={false} 
-        className="h-full w-full z-0" 
-        style={{ background: isDark ? '#0a0a0a' : '#f8fafc' }}
-      >
-        <MapUpdater center={center} zoom={zoom} />
+    <>
+      <div className="relative h-full w-full isolate">
+        <LeafletMap 
+          center={center} 
+          zoom={zoom} 
+          scrollWheelZoom={true} 
+          zoomControl={false} 
+          className="h-full w-full z-0" 
+          style={{ background: isDark ? '#0a0a0a' : '#f8fafc' }}
+        >
+          <MapUpdater center={center} zoom={zoom} />
+          <MapInstanceCapture />
+          <MouseTracker onMouseMove={setMousePos} />
+          
+          {/* Plugins */}
+
+          
+          
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url={BASEMAP_URLS[basemap]} 
+          />
+          
+          <GeoJSON 
+            key={`${year}-${product}-${indicator}-${basemap}`}
+            data={CAMEROON_REGIONS_GEOJSON}
+            style={getFeatureStyle}
+            onEachFeature={onEachFeature}
+          />
+        </LeafletMap>
         
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url={BASEMAP_URLS[basemap]} 
-        />
-        
-        <ZoomControl position="bottomright" />
-        
-        <GeoJSON 
-          key={`${year}-${product}-${indicator}-${basemap}`}
-          data={CAMEROON_REGIONS_GEOJSON}
-          style={getFeatureStyle}
-          onEachFeature={onEachFeature}
-        />
-      </LeafletMap>
-      
-      {/* Hover Info Panel */}
-      <HoverInfoPanel 
-        feature={hoveredFeature} 
-        value={hoveredValue}
-        unit={unit}
-        year={year}
-        status={hoveredStatus}
-      />
-      
-      {/* Floating Legend */}
-      <div className="absolute bottom-24 right-4 z-[1000] glass-panel p-4 rounded-xl shadow-lg">
-        <h4 className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-widest mb-3">
-          {indicator} ({year})
-        </h4>
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono text-slate-400">0</span>
-          <div className="h-2 w-28 rounded-full bg-gradient-to-r from-cameroon-yellow via-green-500 to-cameroon-green shadow-inner" />
-          <span className="text-[9px] font-mono text-slate-400">{max.toLocaleString('fr-FR')}</span>
-        </div>
-        <div className="flex gap-3 mt-3 pt-2 border-t border-slate-100 dark:border-white/5">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded border-2 border-dashed border-slate-300 dark:border-neutral-600 bg-slate-100 dark:bg-neutral-800" />
-            <span className="text-[9px] text-slate-500 dark:text-neutral-400">Indispo.</span>
+        {/* Legend */}
+        <div className="absolute bottom-24 right-4 z-1000 glass-panel p-4 rounded-xl shadow-lg border border-white/50 dark:border-white/10">
+          <h4 className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-widest mb-3">
+            {indicator} ({year})
+          </h4>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-mono text-slate-400">0</span>
+            <div className="h-2 w-28 rounded-full bg-gradient-to-r from-cameroon-yellow via-green-500 to-cameroon-green shadow-inner" />
+            <span className="text-[9px] font-mono text-slate-400">{max.toLocaleString('fr-FR')}</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700" />
-            <span className="text-[9px] text-slate-500 dark:text-neutral-400">0</span>
+          <div className="flex gap-3 mt-3 pt-2 border-t border-slate-100 dark:border-white/5">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded border-2 border-dashed border-slate-300 dark:border-neutral-600 bg-slate-100 dark:bg-neutral-800" />
+              <span className="text-[9px] text-slate-500 dark:text-neutral-400">Indispo.</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700" />
+              <span className="text-[9px] text-slate-500 dark:text-neutral-400">0</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      
+      {/* Cursor-following Tooltip (rendered outside map container for proper z-index) */}
+      <CursorTooltip data={tooltipData} mousePos={mousePos} unit={unit} year={year} />
+    </>
   );
 };

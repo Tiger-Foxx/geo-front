@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react'; // Added useRef
 import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
+import { MapTools } from '../components/map/MapTools';
 import { TabularView } from './TabularView';
 import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2 } from 'lucide-react';
 import { CROPS, LIVESTOCK, FISHERIES, FISH_INFRASTRUCTURE, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence } from 'framer-motion';
+import L from 'leaflet'; // Need L types
 
 export const Geoportal = () => {
     // State: View & Theme
@@ -13,12 +15,18 @@ export const Geoportal = () => {
     const [sidebarPanelOpen, setSidebarPanelOpen] = useState(false);
   
     // State: Data & Layer Selection
-    const [activeAdminLevel, setActiveAdminLevel] = useState<'region' | 'department' | 'commune'>('department');
-    const [selectedProduct, setSelectedProduct] = useState(CROPS[0]);
+    const [aggregationLevel, setAggregationLevel] = useState<'national' | 'region' | 'department'>('region');
+    const [selectedProduct, setSelectedProduct] = useState<string | null>(CROPS[0]);
     const [years, setYears] = useState<number[]>([2022]);
     const [isPlaying, setIsPlaying] = useState(false);
     const [showLayerConfig, setShowLayerConfig] = useState(true); 
     const [productSearchTerm, setProductSearchTerm] = useState('');
+    
+    // Layer visibility toggles (for admin boundaries display only)
+    const [visibleLayers, setVisibleLayers] = useState<{region: boolean; department: boolean; commune: boolean}>({ region: true, department: false, commune: false });
+
+    // Map Ref
+    const mapRef = useRef<L.Map | null>(null);
     
     // Dynamic Configuration based on Theme
     const sectorConfig = useMemo(() => {
@@ -42,7 +50,6 @@ export const Geoportal = () => {
       setActiveTheme(newTheme);
       setProductSearchTerm('');
       
-      // Auto-select first product and safe default year
       const newConfig = newTheme === 'agriculture' ? { products: CROPS, defaultYear: 2022 } 
                       : newTheme === 'elevage' ? { products: LIVESTOCK, defaultYear: 2021 }
                       : { products: FISHERIES, defaultYear: 2021 };
@@ -57,19 +64,15 @@ export const Geoportal = () => {
     });
     const [showBasemapSelector, setShowBasemapSelector] = useState(false);
     const [isDateWidgetCollapsed, setIsDateWidgetCollapsed] = useState(false);
-    const [, setUserOverrodeBasemap] = useState(false);
-  
-    // Handle manual basemap change by user
+    
     const handleBasemapChange = (newBasemap: BasemapType) => {
       setBasemap(newBasemap);
-      setUserOverrodeBasemap(true); // User manually chose a basemap
       localStorage.setItem('fox_basemap_user_override', 'true');
     };
   
-    // Sync Basemap with Dark Mode automatically (unless user overrode)
+    // Sync Basemap
     useEffect(() => {
       const handleThemeChange = () => {
-        // Only auto-switch if user hasn't manually chosen a basemap
         const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
         if (!userOverride) {
           const isDark = document.documentElement.classList.contains('dark');
@@ -77,7 +80,6 @@ export const Geoportal = () => {
         }
       };
       
-      // Initial load: respect theme if no user override
       const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
       if (!userOverride) {
         const isDark = localStorage.getItem('fox_theme') === 'dark';
@@ -92,14 +94,47 @@ export const Geoportal = () => {
        localStorage.setItem('fox_basemap', basemap);
     }, [basemap]);
     
-    // Memoize data to prevent re-generation on every render (Fixes performance issues)
+    // Data Memoization
     const data = useMemo(() => generateMockData(), []);
   
+    // ACTIONS
     const handleProductSelect = (p: string) => {
         setSelectedProduct(p);
     };
+
+    const toggleLayerVisibility = (layer: 'region' | 'department' | 'commune') => {
+        setVisibleLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
+    };
+
+    const handleZoomIn = () => mapRef.current?.zoomIn();
+    const handleZoomOut = () => mapRef.current?.zoomOut();
+    const handleResetView = () => mapRef.current?.flyTo([7.3697, 12.3547], 6, { duration: 1.5 });
+    
+    // ACTION: Locate User
+    const handleLocate = () => {
+        if (!mapRef.current) return;
+        mapRef.current.locate({ setView: true, maxZoom: 10 });
+        
+        mapRef.current.once('locationfound', (e) => {
+             L.popup()
+              .setLatLng(e.latlng)
+              .setContent('<div class="text-xs font-bold text-center">Vous êtes ici</div>')
+              .openOn(mapRef.current!);
+        });
+        
+        mapRef.current.once('locationerror', () => {
+            alert('Impossible de vous localiser.');
+        });
+    };
+
+    // ACTION: Fullscreen
+    const handleFullscreen = () => {
+         if (mapRef.current && (mapRef.current as any).toggleFullscreen) {
+            (mapRef.current as any).toggleFullscreen();
+         }
+    };
   
-    // Animation Loop for Timeline
+    // Animation Loop
     useEffect(() => {
       let interval: any;
       if (isPlaying) {
@@ -117,11 +152,7 @@ export const Geoportal = () => {
     }, [isPlaying, sectorConfig]);
   
     const toggleYear = (y: number) => {
-        setYears(prev => {
-            console.log(prev)
-            // Single year selection mode for now, to keep map simple
-            return [y];
-        });
+        setYears([y]);
     };
   
     const availableYears = Array.from(
@@ -132,7 +163,7 @@ export const Geoportal = () => {
     return (
       <div className="relative h-screen w-full bg-slate-50 flex overflow-hidden font-sans">
         
-        {/* 1. Global Sidebar (The Dock) */}
+        {/* 1. Global Sidebar */}
       <Sidebar 
         view={view} 
         onViewChange={setView}
@@ -140,19 +171,17 @@ export const Geoportal = () => {
         onThemeChange={handleThemeChange}
         activePanel={sidebarPanelOpen}
         onTogglePanel={() => setSidebarPanelOpen(!sidebarPanelOpen)}
-        onSettingsClick={() => {}} // Disabled modal settings
+        onSettingsClick={() => {}} 
       >
-        {/* Sidebar Content (Injected into the Floating Panel) */}
         <div className="p-5 flex flex-col gap-8 h-full">
                 
-
-          {/* Admin Layer Control (Visible & Elegant) */}
+          {/* Layer Visibility Toggles */}
           <div className="space-y-3">
              <div 
                onClick={() => setShowLayerConfig(!showLayerConfig)}
                className="flex items-center justify-between cursor-pointer group"
              >
-                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em] group-hover:text-cameroon-green transition-colors">Découpage Admin.</h3>
+                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em] group-hover:text-cameroon-green transition-colors">Couches Limites</h3>
                 <ChevronRight size={14} className={`text-slate-300 dark:text-neutral-600 transition-transform ${showLayerConfig ? 'rotate-90' : ''}`} />
              </div>
              
@@ -164,25 +193,27 @@ export const Geoportal = () => {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="flex flex-col gap-2 p-1">
+                        <div className="flex flex-col gap-1.5 p-1">
                             {[
                                 { id: 'region', label: 'Régions', icon: Globe },
                                 { id: 'department', label: 'Départements', icon: MapIcon },
                                 { id: 'commune', label: 'Arrondissements', icon: Layers }
                             ].map((level) => (
-                                <button
+                                <div
                                     key={level.id}
-                                    onClick={() => setActiveAdminLevel(level.id as any)}
-                                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all ${
-                                        activeAdminLevel === level.id 
-                                        ? 'bg-neutral-800 dark:bg-white text-white dark:text-black shadow-md' 
-                                        : 'bg-white dark:bg-neutral-900 text-slate-600 dark:text-neutral-300 border border-slate-100 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-neutral-800'
-                                    }`}
+                                    onClick={() => toggleLayerVisibility(level.id as any)}
+                                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-[12px] font-medium cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all bg-white dark:bg-neutral-900 border border-slate-100 dark:border-white/10"
                                 >
-                                    <level.icon size={14} className={activeAdminLevel === level.id ? 'text-cameroon-yellow dark:text-cameroon-green' : 'text-slate-400 dark:text-neutral-500'} />
-                                    <span className="flex-1 text-left">{level.label}</span>
-                                    {activeAdminLevel === level.id && <div className="w-1.5 h-1.5 rounded-full bg-cameroon-green dark:bg-cameroon-green ring-2 ring-neutral-800 dark:ring-white" />}
-                                </button>
+                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                                        visibleLayers[level.id as keyof typeof visibleLayers]
+                                            ? 'bg-cameroon-green border-cameroon-green' 
+                                            : 'border-slate-300 dark:border-neutral-600'
+                                    }`}>
+                                        {visibleLayers[level.id as keyof typeof visibleLayers] && <Check size={10} className="text-white" strokeWidth={3} />}
+                                    </div>
+                                    <level.icon size={14} className="text-slate-400 dark:text-neutral-500" />
+                                    <span className="flex-1 text-left text-slate-600 dark:text-neutral-300">{level.label}</span>
+                                </div>
                             ))}
                         </div>
                     </motion.div>
@@ -192,13 +223,35 @@ export const Geoportal = () => {
 
           {/* Product/Variable Selection */}
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col pt-2 border-t border-slate-50 dark:border-white/5">
-             <div className="flex justify-between items-center px-1">
+             <div className="flex flex-col gap-2 px-1">
                 <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em]">
                     {activeTheme === 'overview' ? 'Indicateurs' : 'Filières'}
                 </h3>
+                {/* Aggregation Level Selector */}
+                {activeTheme !== 'overview' && (
+                    <div className="flex gap-1 p-0.5 bg-slate-100 dark:bg-neutral-900 rounded-lg">
+                        {[
+                            { id: 'national', label: 'Nat.' },
+                            { id: 'region', label: 'Rég.' },
+                            { id: 'department', label: 'Dép.' }
+                        ].map(level => (
+                            <button
+                                key={level.id}
+                                onClick={() => setAggregationLevel(level.id as any)}
+                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
+                                    aggregationLevel === level.id
+                                        ? 'bg-white dark:bg-neutral-800 text-cameroon-green shadow-sm'
+                                        : 'text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300'
+                                }`}
+                            >
+                                {level.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
              </div>
              
-             {/* Small Search Bar inside Sidebar */}
+             {/* Search Bar */}
              {activeTheme !== 'overview' && (
                 <div className="px-1">
                     <div className="flex items-center gap-2 bg-slate-50 dark:bg-neutral-900 border border-slate-100 dark:border-white/10 rounded-lg px-2 py-1.5 focus-within:ring-1 focus-within:ring-cameroon-green/30 focus-within:bg-white dark:focus-within:bg-neutral-800 transition-all">
@@ -246,7 +299,7 @@ export const Geoportal = () => {
       {/* 2. Main Content Area */}
       <main className="flex-1 relative h-full w-full">
         
-        {/* Top Floating Bar (Google Maps Style) - ONLY VISIBLE IN MAP VIEW */}
+        {/* Top Floating Bar - ONLY VISIBLE IN MAP VIEW */}
         <AnimatePresence>
           {view === 'map' && (
              <div className="absolute top-14 left-2 right-2 md:top-6 md:left-32 md:right-auto md:w-[480px] z-[2000] pointer-events-none flex flex-col gap-2">
@@ -278,17 +331,17 @@ export const Geoportal = () => {
           )}
         </AnimatePresence>
 
-        {/* Draggable Date Widget (Top Right) - ONLY VISIBLE IN MAP VIEW */}
+        {/* Date Widget - Draggable */}
         <AnimatePresence>
            {view === 'map' && (
               <motion.div
                  drag
                  dragMomentum={false}
-                 dragConstraints={{ left: -1000, right: 0, top: 0, bottom: 800 }}
+                 dragConstraints={{ left: -500, right: 0, top: 0, bottom: 500 }}
                  initial={{ opacity: 0, x: 50 }}
                  animate={{ opacity: 1, x: 0 }}
                  exit={{ opacity: 0, x: 50 }}
-                 className="absolute top-3 md:top-6 right-3 md:right-6 z-[2500] pointer-events-auto"
+                 className="absolute top-3 md:top-6 right-3 md:right-6 z-[5000] pointer-events-auto"
               >
                   <motion.div 
                     animate={{ 
@@ -299,7 +352,7 @@ export const Geoportal = () => {
                     className="glass-panel rounded-xl md:rounded-2xl shadow-2xl border border-white/60 dark:border-white/10 overflow-hidden flex flex-col"
                     style={{ maxHeight: isDateWidgetCollapsed ? '50px' : '350px' }}
                   >
-                      {/* Header (Draggable Handle) */}
+                      
                       <div className="p-2 md:p-3 bg-slate-50/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5 flex items-center justify-between cursor-move active:cursor-grabbing group">
                           <div className="flex items-center gap-1.5 md:gap-2 text-slate-500 dark:text-neutral-400">
                              <Calendar size={12} className="md:w-[14px] md:h-[14px]" />
@@ -311,7 +364,6 @@ export const Geoportal = () => {
                             <button 
                                 onClick={() => setIsDateWidgetCollapsed(!isDateWidgetCollapsed)}
                                 className="p-0.5 md:p-1 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-neutral-200 transition-colors pointer-cursor"
-                                onPointerDownCapture={(e) => e.stopPropagation()} // Prevent drag start when clicking button
                             >
                                 {isDateWidgetCollapsed ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
                             </button>
@@ -319,7 +371,6 @@ export const Geoportal = () => {
                           </div>
                       </div>
                       
-                      {/* Scrollable Content */}
                       {!isDateWidgetCollapsed && (
                         <>
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
@@ -345,7 +396,6 @@ export const Geoportal = () => {
                                 ))}
                             </div>
 
-                            {/* Footer Actions */}
                             <div className="p-2 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-black/50 flex justify-center">
                                 <button 
                                     onClick={() => setIsPlaying(!isPlaying)}
@@ -367,15 +417,25 @@ export const Geoportal = () => {
             {view === 'map' ? (
                 <div className="w-full h-full relative">
                     <MapContainer 
+                        onMapReady={(map) => { mapRef.current = map; }}
                         data={data}
                         year={years[0]} 
-                        product={selectedProduct}
+                        product={selectedProduct || ''}
                         indicator={activeTheme === 'elevage' ? 'Effectif' : 'Production'}
                         basemap={basemap}
-                        adminLevel={activeAdminLevel}
+                        adminLevel={aggregationLevel === 'national' ? 'region' : aggregationLevel}
+                    />
+
+                    {/* NEW MAP TOOLS - FLOATING RIGHT */}
+                    <MapTools 
+                        onZoomIn={handleZoomIn}
+                        onZoomOut={handleZoomOut}
+                        onResetView={handleResetView}
+                        onLocate={handleLocate}
+                        onFullscreen={handleFullscreen}
                     />
                     
-                    {/* Google Style Basemap Switcher (Bottom Left) - Adjusted for Sidebar conflict */}
+                    {/* Basemap Switcher */}
                     <div 
                         className="absolute bottom-20 left-2 md:bottom-8 md:left-32 z-[1000]"
                         onClick={() => setShowBasemapSelector(!showBasemapSelector)}
@@ -430,39 +490,19 @@ export const Geoportal = () => {
                             )}
                         </motion.div>
                     </div>
-
-                    {/* Legend Overlay - Centered Bottom to avoid Zoom Control conflict - HIDDEN ON MOBILE */}
-                    <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-[900] pointer-events-none w-full max-w-md justify-center">
-                        <motion.div 
-                            initial={{ y: 50, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            className="glass px-4 py-3 rounded-2xl flex items-center gap-4 pointer-events-auto shadow-lg ring-1 ring-black/5"
-                        >
-                            <span className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-widest whitespace-nowrap">Production</span>
-                            <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-mono text-slate-400 dark:text-neutral-500">0t</span>
-                                <div className="h-2 w-48 rounded-full bg-gradient-to-r from-cameroon-yellow via-cameroon-green to-green-900 shadow-inner border border-black/5" />
-                                <span className="text-[10px] font-mono text-slate-400 dark:text-neutral-500">Max</span>
-                            </div>
-                        </motion.div>
-                    </div>
                 </div>
             ) : (
                 <div className="w-full h-full bg-slate-50 dark:bg-black">
-                    <TabularView />
+                    <TabularView 
+                        selectedProduct={selectedProduct || ''}
+                        activeTheme={activeTheme}
+                        years={years}
+                    />
                 </div>
             )}
         </div>
 
       </main>
-      
-      {/* Settings Modal Removed - Replaced by on-map controls
-      <AnimatePresence>
-        {showSettings && (
-             ...
-        )}
-      </AnimatePresence> 
-      */}
     </div>
   );
 };
