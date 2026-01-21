@@ -3,7 +3,7 @@ import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { TabularView } from './TabularView';
 import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2 } from 'lucide-react';
-import { CROPS, LIVESTOCK, FISHERIES, INFRASTRUCTURES, generateMockData } from '../data/mockData';
+import { CROPS, LIVESTOCK, FISHERIES, FISH_INFRASTRUCTURE, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const Geoportal = () => {
@@ -25,7 +25,7 @@ export const Geoportal = () => {
         switch (activeTheme) {
             case 'agriculture': return { products: CROPS, minYear: 1998, maxYear: 2022, defaultYear: 2022 };
             case 'elevage': return { products: LIVESTOCK, minYear: 2015, maxYear: 2021, defaultYear: 2021 };
-            case 'peche': return { products: [...FISHERIES, ...INFRASTRUCTURES], minYear: 2015, maxYear: 2021, defaultYear: 2021 };
+            case 'peche': return { products: [...FISHERIES, ...FISH_INFRASTRUCTURE], minYear: 2015, maxYear: 2021, defaultYear: 2021 };
             default: return { products: CROPS, minYear: 2000, maxYear: 2022, defaultYear: 2022 };
         }
     }, [activeTheme]);
@@ -118,6 +118,7 @@ export const Geoportal = () => {
   
     const toggleYear = (y: number) => {
         setYears(prev => {
+            console.log(prev)
             // Single year selection mode for now, to keep map simple
             return [y];
         });
@@ -369,8 +370,9 @@ export const Geoportal = () => {
                         data={data}
                         year={years[0]} 
                         product={selectedProduct}
-                        indicator="Production"
+                        indicator={activeTheme === 'elevage' ? 'Effectif' : 'Production'}
                         basemap={basemap}
+                        adminLevel={activeAdminLevel}
                     />
                     
                     {/* Google Style Basemap Switcher (Bottom Left) - Adjusted for Sidebar conflict */}

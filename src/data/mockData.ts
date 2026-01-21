@@ -5,9 +5,9 @@ export interface DataPoint {
   product: string;
   season_year: number;
   indicator: string;
-  value: number | null;
+  value: number | null; // null = Indisponible, 0 = Pas de production
   unit: string;
-  status: 'confirmed' | 'estimated' | 'missing';
+  status: 'confirmed' | 'estimated' | 'unavailable';
   granularity: 'national' | 'regional' | 'departmental';
 }
 
@@ -24,15 +24,18 @@ export const REGIONS_DEPARTMENTS: Record<string, string[]> = {
   'Sud-Ouest': ['Fako', 'Koupe-Manengouba', 'Lebialem', 'Manyu', 'Meme', 'Ndian']
 };
 
+export const REGIONS = Object.keys(REGIONS_DEPARTMENTS);
+
 export const CROPS = ['Maïs', 'Manioc', 'Cacao', 'Café', 'Banane Plantain', 'Sorgho', 'Riz', 'Haricot', 'Arachide', 'Igname', 'Patate douce', 'Pomme de terre', 'Coton', 'Hévéa', 'Palmier à huile', 'Agrumes', 'Tomate', 'Oignon', 'Ail', 'Piment', 'Gombo', 'Ananas', 'Avocat'];
 export const LIVESTOCK = ['Bovins', 'Ovins', 'Caprins', 'Porcins', 'Volailles'];
-export const FISHERIES = ['Pêche Artisanale Maritime', 'Pêche Artisanale Continentale', 'Pêche Industrielle', 'Pisciculture'];
-export const INFRASTRUCTURES = ['Débarcadères', 'Marchés à poisson', 'Stations aquacoles', 'Usines de glace'];
+export const FISHERIES = ['Pêche Artisanale Maritime', 'Pêche Continentale', 'Pêche Industrielle', 'Pisciculture'];
+export const FISH_INFRASTRUCTURE = ['Débarcadères', 'Halls de vente', 'Fumoirs', 'Etangs actifs', 'Cages', 'Bacs'];
 
-// Specific year ranges based on data availability
+// Year ranges based on actual data availability
 const YEARS_AGRI = Array.from({ length: 25 }, (_, i) => 1998 + i); // 1998 - 2022
-const YEARS_LIVESTOCK = Array.from({ length: 7 }, (_, i) => 2015 + i); // 2015 - 2021
-const YEARS_FISHERIES = [2021]; // Mainly 2021 for departmental data
+const YEARS_LIVESTOCK_NATIONAL = Array.from({ length: 7 }, (_, i) => 2015 + i); // 2015 - 2021
+const YEARS_LIVESTOCK_REGIONAL = [2020, 2021]; // Regional data only for these
+const YEARS_PECHE = [2021]; // Only 2021
 
 export const generateMockData = (): DataPoint[] => {
   const data: DataPoint[] = [];
@@ -41,74 +44,95 @@ export const generateMockData = (): DataPoint[] => {
     depts.forEach(dept => {
       const fnid = `CM-${region.substring(0, 2).toUpperCase()}-${dept.substring(0, 3).toUpperCase()}`;
 
-      // --- AGRICULTURE (Departmental, 1998-2022) ---
+      // === AGRICULTURE (Departmental, 1998-2022) ===
       YEARS_AGRI.forEach(year => {
         CROPS.forEach(crop => {
-          const isMissing = Math.random() > 0.98;
-          const baseValue = (year - 1998) * 15 + Math.random() * 200;
+          // Simulate occasional null values (data gaps)
+          const hasData = Math.random() > 0.02;
+          // Simulate occasional zero (no production in that zone)
+          const isZero = hasData && Math.random() > 0.95;
           
-          ['Production', 'Surface Cultivée', 'Rendement'].forEach(ind => {
-             let unit = ind === 'Production' ? 'tonnes' : ind === 'Surface Cultivée' ? 'ha' : 't/ha';
-             let val = baseValue;
-             if (ind === 'Surface Cultivée') val = baseValue / 2;
-             if (ind === 'Rendement') val = (baseValue / (baseValue / 2 || 1));
-
-             data.push({
-               fnid, region, department: dept, product: crop, season_year: year,
-               indicator: ind, 
-               value: isMissing ? null : val, 
-               unit, 
-               status: isMissing ? 'missing' : 'confirmed',
-               granularity: 'departmental'
-             });
+          const baseValue = (year - 1998) * 15 + Math.random() * 300;
+          
+          data.push({
+            fnid, region, department: dept, product: crop, season_year: year,
+            indicator: 'Production',
+            value: !hasData ? null : isZero ? 0 : baseValue,
+            unit: 'tonnes',
+            status: !hasData ? 'unavailable' : 'confirmed',
+            granularity: 'departmental'
+          });
+          
+          data.push({
+            fnid, region, department: dept, product: crop, season_year: year,
+            indicator: 'Surface Cultivée',
+            value: !hasData ? null : isZero ? 0 : baseValue / 2,
+            unit: 'ha',
+            status: !hasData ? 'unavailable' : 'confirmed',
+            granularity: 'departmental'
           });
         });
       });
 
-      // --- LIVESTOCK (Regional mostly, 2015-2021) ---
-      YEARS_LIVESTOCK.forEach(year => {
+      // === ELEVAGE (Regional only for 2020-2021) ===
+      YEARS_LIVESTOCK_REGIONAL.forEach(year => {
         LIVESTOCK.forEach(animal => {
-          // Data is Regional. We simulate this by giving all depts in a region the same "regional average" or marking as regional
-          const isRegionalDataOnly = year >= 2020; 
-          const status = isRegionalDataOnly ? 'confirmed' : 'estimated'; 
+          // All depts in a region get the same value (regional data)
+          const regionalValue = Math.floor(Math.random() * 500000) + 10000;
           
           data.push({
             fnid, region, department: dept, product: animal, season_year: year,
-            indicator: 'Effectif', 
-            value: Math.floor(Math.random() * 10000) + 500, 
+            indicator: 'Effectif',
+            value: regionalValue,
             unit: 'têtes',
-            status,
+            status: 'confirmed',
+            granularity: 'regional' // Important: data is regional
+          });
+        });
+      });
+      
+      // Elevage for years 2015-2019: only National data exists, so mark as unavailable at dept level
+      YEARS_LIVESTOCK_NATIONAL.filter(y => y < 2020).forEach(year => {
+        LIVESTOCK.forEach(animal => {
+          data.push({
+            fnid, region, department: dept, product: animal, season_year: year,
+            indicator: 'Effectif',
+            value: null, // No departmental/regional data
+            unit: 'têtes',
+            status: 'unavailable',
+            granularity: 'departmental'
+          });
+        });
+      });
+
+      // === PECHE (2021 only, departmental) ===
+      YEARS_PECHE.forEach(year => {
+        FISHERIES.forEach(type => {
+          const hasData = Math.random() > 0.1;
+          const isZero = hasData && Math.random() > 0.8;
+          
+          data.push({
+            fnid, region, department: dept, product: type, season_year: year,
+            indicator: 'Production',
+            value: !hasData ? null : isZero ? 0 : Math.random() * 500,
+            unit: 'tonnes',
+            status: !hasData ? 'unavailable' : 'confirmed',
+            granularity: 'departmental'
+          });
+        });
+
+        // Infrastructure (Regional level)
+        FISH_INFRASTRUCTURE.forEach(infra => {
+          data.push({
+            fnid, region, department: dept, product: 'Infrastructure', season_year: year,
+            indicator: infra,
+            value: Math.floor(Math.random() * 10),
+            unit: 'unités',
+            status: 'confirmed',
             granularity: 'regional'
           });
         });
       });
-
-      // --- FISHERIES (Departmental 2021, Regional Infrastructures) ---
-      YEARS_FISHERIES.forEach(year => {
-         FISHERIES.forEach(type => {
-            data.push({
-               fnid, region, department: dept, product: type, season_year: year,
-               indicator: 'Production',
-               value: Math.random() * 500,
-               unit: 'tonnes',
-               status: 'confirmed',
-               granularity: 'departmental'
-            });
-         });
-
-         // Infrastructure (2021 only)
-         INFRASTRUCTURES.forEach(infra => {
-             data.push({
-                 fnid, region, department: dept, product: 'Infrastructure', season_year: year,
-                 indicator: infra,
-                 value: Math.floor(Math.random() * 5),
-                 unit: 'unités',
-                 status: 'confirmed',
-                 granularity: 'regional'
-             });
-         });
-      });
-
     });
   });
 

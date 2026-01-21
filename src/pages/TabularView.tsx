@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { REGIONS_DEPARTMENTS, CROPS, generateMockData } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, ArrowRight, Download, Filter, BarChart3, MapPin, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Download, Filter, BarChart3, MapPin, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const TabularView = () => {
@@ -21,16 +21,16 @@ export const TabularView = () => {
   const getCellData = (dept: string, year: number) => {
     const record = data.find(d => d.department === dept && d.season_year === year && d.product === selectedProduct);
     const val = record?.value;
-    const status = record?.status || 'missing';
+    const status = record?.status || 'unavailable';
     
-    // Fake trend logic for demo (only if current val exists)
+    // Fake trend logic for demo (only if current val exists and is not 0)
     const prevRecord = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct);
     const prevYearVal = prevRecord?.value;
     
     let trend: 'up' | 'down' | 'stable' = 'stable';
     let percent = 0;
 
-    if (val && prevYearVal) {
+    if (val && val > 0 && prevYearVal && prevYearVal > 0) {
         trend = val > prevYearVal ? 'up' : val < prevYearVal ? 'down' : 'stable';
         percent = ((val - prevYearVal) / prevYearVal) * 100;
     }
@@ -186,14 +186,16 @@ export const TabularView = () => {
                       const { val, status, trend, percent } = getCellData(dept, year);
 
                       return (
-                        <td key={col} className={`p-3 border-l border-slate-50 dark:border-white/[0.02] text-center relative ${status === 'missing' ? 'bg-slate-50/30 diagonal-stripes' : ''}`}>
+                        <td key={col} className={`p-3 border-l border-slate-50 dark:border-white/5 text-center relative ${status === 'unavailable' ? 'bg-slate-100/50 dark:bg-neutral-900/50' : val === 0 ? 'bg-slate-50/30 dark:bg-neutral-900/30' : ''}`}>
                           <div className="flex flex-col items-center justify-center gap-0.5">
-                            {status === 'missing' || val === null || val === undefined ? (
-                                <span className="text-[10px] font-medium text-slate-300 dark:text-neutral-700 uppercase tracking-wider text-[0.65rem]">Non dispo.</span>
+                            {status === 'unavailable' || val === null || val === undefined ? (
+                                <span className="text-[10px] font-medium text-slate-400 dark:text-neutral-600 italic tracking-wide">Indisponible</span>
+                            ) : val === 0 ? (
+                                <span className="text-sm font-medium text-slate-300 dark:text-neutral-600">0</span>
                             ) : (
                                 <>
                                     <span className={`text-sm font-medium tabular-nums tracking-tight ${status === 'estimated' ? 'text-cameroon-yellow' : 'text-slate-700 dark:text-neutral-300'}`}>
-                                        {val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {val.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}
                                         {status === 'estimated' && '*'}
                                     </span>
                                     

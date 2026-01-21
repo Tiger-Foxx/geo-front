@@ -1,165 +1,244 @@
-# GEO-Front — Frontend
+# 🇨🇲 GEO-Front — Géoportail Cameroun
 
-Résumé complet du projet frontend (état actuel)
-
-## Vue d'ensemble
-- Projet: application web de webmapping (Geoportal) orientée données agricoles et territoriales.
-- Stack principal: React + Vite + TypeScript + Tailwind CSS 4.x.
-- Objectif: interface cartographique avec panneau latéral, sélecteurs de couches, vue tabulaire et contrôles thématiques.
-
-## Structure importante (dossier `frontend/src`)
-- `main.tsx` — point d'entrée React.
-- `App.tsx` — wrapper d'application et routes.
-- `pages/`
-  - `Geoportal.tsx` — vue principale carte + contrôles flottants, basemap, légende.
-  - `LandingPage.tsx` — page d'accueil responsive.
-  - `TabularView.tsx` — matrice/tabulaire (pivot table) interactive.
-- `components/`
-  - `layout/Sidebar.tsx` — dock utilitaire et panneau latéral (mobile + desktop).
-  - `map/MapContainer.tsx` — wrapper Leaflet, TileLayer, couches, popups.
-- `data/mockData.ts` — données de démonstration générées.
-- `utils/dataProcessor.ts` — helpers de traitement.
-- `index.css` — Tailwind + variantes custom (dark variant), styles globaux et scrollbar.
-
-## Comportement et décisions techniques clés
-
-- Thème sombre "True Black":
-  - `index.css` contient `@custom-variant dark (&:where(.dark, .dark *));` pour Tailwind 4.
-  - Les couleurs sombres utilisent `black` et `neutral-950/900` pour obtenir un noir véritable (#000 / #050505 selon contexte).
-  - Thème persisté via `localStorage` key `fox_theme` (valeurs `light` / `dark`).
-
-- Basemap auto-sync et override:
-  - Basemap stocké dans `localStorage` sous `fox_basemap`.
-  - Si l'utilisateur change manuellement la basemap, on inscrit `fox_basemap_user_override=true` pour éviter les overrides automatiques lors du changement de thème.
-
-- Scrollbar:
-  - Les scrollbars des panneaux sont fines et discrètes par défaut (transparentes), visibles au survol (pour rester minimalistes tout en restant utilisables).
-  - Classe utilitaire: `.custom-scrollbar` dans `index.css`.
-
-- Réactivité / Mobile:
-  - Sidebar: hamburger visible sur mobile; panneau latéral transformé en sheet overlay.
-  - Widgets (recherche, date, basemap) repositionnés pour éviter chevauchement sur petits écrans.
-  - Légende masquée sur mobile pour gagner de l'espace.
-
-- Accessibilité / UX:
-  - Taille tactile améliorée pour les contrôles sur mobile.
-  - Scrollbars accessibles au survol / interaction tactile.
-
-## Composants principaux (résumé rapide)
-
-- `Sidebar.tsx`:
-  - Dock d'icônes (vue, thématiques) + panneau de contenu. Gère l'état `isMobileSidebarOpen` et `activePanel`.
-  - Actions: `onViewChange`, `onThemeChange`, `onTogglePanel`.
-
-- `MapContainer.tsx`:
-  - Intègre `react-leaflet` et `TileLayer` selon `basemap`.
-  - Écoute l'événement global `theme-change` pour resynchroniser la basemap si aucun override utilisateur.
-
-- `TabularView.tsx`:
-  - Vue pivot/tableau avec barre d'outils, sélection de région, sélection de produit et table scrollable.
-  - En-têtes collants (`sticky`) et colonne gauche fixe.
-
-## Déploiement
-- Fichiers de config: `vercel.json` et `public/_redirects` fournis pour fallback SPA (routes client-side).
-
-## Scripts utiles
-Depuis `frontend`:
-
-```bash
-npm install
-npm run dev    # développement
-npm run build  # build de production
-``` 
-
-`npm run build` lance `tsc -b` puis `vite build`.
-
-## Bonnes pratiques pour contribution
-- Respecter l'approche mobile-first et garder les utilitaires Tailwind.
-- Préserver la variable `fox_basemap_user_override` pour éviter de perturber le choix utilisateur.
-- Quand vous modifiez `index.css`, veillez à conserver `@custom-variant dark` en tête.
-
-## Problèmes connus & améliorations suggérées
-- Certaines bundles JS sont volumineuses (>500kb); envisager du code-splitting dynamique.
-- Test réel sur appareils mobiles (iOS/Android) recommandé pour valider interactions tactiles.
-- Ajouter tests unitaires pour `dataProcessor` et composants critiques.
-
-## Contact & suivi
-- Repo distant: `https://github.com/Tiger-Foxx/geo-front` (pushs récents effectués depuis `frontend`).
-- Pour une map précise des composants: lisez les fichiers dans `src/components` et `src/pages`.
+> Interface cartographique de visualisation des données agricoles, d'élevage et de pêche au Cameroun.
 
 ---
 
-Fichier généré automatiquement par un assistant — décrit l'état actuel du frontend au moment de la création.
-# React + TypeScript + Vite
+## 📋 Table des Matières
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+- [Vue d'ensemble](#vue-densemble)
+- [Données Disponibles](#-données-disponibles)
+- [Fonctionnalités Actuelles](#-fonctionnalités-actuelles)
+- [Fonctionnalités Planifiées](#-fonctionnalités-planifiées)
+- [Architecture Technique](#-architecture-technique)
+- [Installation & Développement](#-installation--développement)
+- [Contribution](#-contribution)
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Vue d'ensemble
 
-## React Compiler
+**GEO-Front** est un géoportail web moderne permettant de visualiser et analyser les données de production agricole, d'élevage et de pêche du Cameroun. L'application offre deux modes de visualisation :
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **Vue Carte** : Analyse thématique choroplèthe sur fond de carte interactif
+2. **Vue Tabulaire** : Matrice pivot avec données croisées années/zones
 
-## Expanding the ESLint configuration
+### Stack Technique
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend** : React 18 + TypeScript + Vite
+- **Cartographie** : React-Leaflet + Leaflet
+- **Styles** : Tailwind CSS 4.x (dark mode natif)
+- **Animations** : Framer Motion
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 📊 Données Disponibles
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Matrice de Disponibilité
+
+| Secteur         | Granularité       | Années      | Source       | État            |
+| --------------- | ----------------- | ----------- | ------------ | --------------- |
+| **Agriculture** | Département       | 1998 - 2022 | MINADER/DESA | ✅ Complet      |
+| **Élevage**     | National          | 2015 - 2021 | MINEPIA      | ✅ Complet      |
+| **Élevage**     | Régional          | 2020 - 2021 | MINEPIA      | ⚠️ Partiel      |
+| **Élevage**     | Département       | -           | -            | ❌ Indisponible |
+| **Pêche**       | National          | 2021        | MINEPIA      | ✅ Complet      |
+| **Pêche**       | Régional (Infra.) | 2021        | MINEPIA      | ✅ Complet      |
+| **Pêche**       | Département       | 2021        | MINEPIA      | ✅ Complet      |
+
+### Filières Couvertes
+
+**Agriculture (23 cultures)** :
+Maïs, Manioc, Cacao, Café, Banane Plantain, Sorgho, Riz, Haricot, Arachide, Igname, Patate douce, Pomme de terre, Coton, Hévéa, Palmier à huile, Agrumes, Tomate, Oignon, Ail, Piment, Gombo, Ananas, Avocat
+
+**Élevage (5 espèces)** :
+Bovins, Ovins, Caprins, Porcins, Volailles
+
+**Pêche (4 types + 6 infrastructures)** :
+
+- Types : Pêche Artisanale Maritime, Pêche Continentale, Pêche Industrielle, Pisciculture
+- Infrastructures : Débarcadères, Halls de vente, Fumoirs, Étangs actifs, Cages, Bacs
+
+### Règles d'Affichage des Valeurs
+
+| État de la donnée      | Affichage UI    | Couleur Carte             |
+| ---------------------- | --------------- | ------------------------- |
+| `null` (non collectée) | "Indisponible"  | Gris + bordure pointillée |
+| `0` (zéro production)  | "0"             | Blanc/gris clair          |
+| `> 0` (valeur)         | Valeur formatée | Gradient jaune → vert     |
+
+---
+
+## ✅ Fonctionnalités Actuelles
+
+### Interface Générale
+
+- [x] Responsive mobile-first (dock transformé en sheet overlay)
+- [x] Thème sombre "True Black" (#000000)
+- [x] Persistance localStorage (thème, basemap)
+- [x] Animations fluides (Framer Motion)
+
+### Sidebar / Panneau de Contrôle
+
+- [x] Sélection du secteur (Agriculture / Élevage / Pêche)
+- [x] Sélection du niveau administratif (Région / Département / Arrondissement)
+- [x] Liste filtrée des filières avec recherche
+- [x] Fermeture au clic extérieur (comportement modal)
+
+### Vue Carte
+
+- [x] 5 fonds de carte (Clair, Sombre, Satellite, Terrain, OSM)
+- [x] Synchronisation basemap ↔ thème sombre
+- [x] Choroplèthe dynamique basé sur les données
+- [x] Panneau info au survol (région, valeur, année)
+- [x] Légende de couleurs adaptative
+- [x] Zoom control repositionné
+
+### Vue Tabulaire
+
+- [x] Pivot table (années en lignes OU départements en lignes)
+- [x] Sélecteur de région avec dropdown élégant
+- [x] Affichage différencié null / 0 / valeur
+- [x] Tendances (↑ / ↓) basées sur l'année précédente
+- [x] En-têtes et colonnes sticky
+
+---
+
+## 🔜 Fonctionnalités Planifiées
+
+### Carte (Priorité Haute)
+
+- [ ] **Propagation niveau admin** : Régions OU Départements selon sélection
+- [ ] **Couche limites seule** : Afficher les frontières sans données (élégant)
+- [ ] **Layer Control** : Superposition couches analyse + limites
+- [ ] **Outils Leaflet** : Mesure distance, plein écran, impression
+- [ ] **Zoom to extent** : Focus sur région sélectionnée
+- [ ] **Animations de transition** : Smooth entre changements d'année
+
+### Données (Priorité Haute)
+
+- [ ] **Intégration GeoServer** : Connexion aux couches WMS/WFS
+- [ ] **Fichiers GeoJSON réels** : Départements du Cameroun
+- [ ] **API Backend** : Remplacement des données mock
+
+### UX (Priorité Moyenne)
+
+- [ ] **Export CSV** : Téléchargement des données tabulaires
+- [ ] **Comparaison temporelle** : Sélection multi-années
+- [ ] **Graphiques inline** : Mini-charts dans le panneau info
+- [ ] **Tutoriel onboarding** : Guide utilisateur première visite
+
+---
+
+## 🏗️ Architecture Technique
+
+### Structure des Dossiers
+
+```
+frontend/src/
+├── main.tsx              # Point d'entrée React
+├── App.tsx               # Routes et wrapper
+├── index.css             # Tailwind + styles globaux
+├── pages/
+│   ├── Geoportal.tsx     # Vue principale (carte + contrôles)
+│   ├── TabularView.tsx   # Vue tableau pivot
+│   └── LandingPage.tsx   # Page d'accueil
+├── components/
+│   ├── layout/
+│   │   └── Sidebar.tsx   # Dock + panneau latéral
+│   └── map/
+│       └── MapContainer.tsx  # Composant Leaflet
+├── data/
+│   └── mockData.ts       # Générateur de données fictives
+└── utils/
+    └── dataProcessor.ts  # Fonctions de traitement
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Flux de Données
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+Sidebar (sélection)
+    ↓
+Geoportal.tsx (état global)
+    ↓
+├── MapContainer (choroplèthe)
+└── TabularView (tableau pivot)
+```
+
+### Variables localStorage
+
+| Clé                         | Valeurs                                            | Usage                           |
+| --------------------------- | -------------------------------------------------- | ------------------------------- |
+| `fox_theme`                 | `light` / `dark`                                   | Thème couleur                   |
+| `fox_basemap`               | `light` / `dark` / `satellite` / `terrain` / `osm` | Fond de carte                   |
+| `fox_basemap_user_override` | `true` / absent                                    | Empêche sync auto thème↔basemap |
+
+---
+
+## 🛠️ Installation & Développement
+
+### Prérequis
+
+- Node.js 18+
+- npm ou yarn
+
+### Installation
+
+```bash
+cd frontend
+npm install
+```
+
+### Développement
+
+```bash
+npm run dev
+```
+
+Ouvre http://localhost:5173
+
+### Build Production
+
+```bash
+npm run build
+```
+
+### Déploiement
+
+Fichiers de config inclus :
+
+- `vercel.json` : Fallback SPA pour Vercel
+- `public/_redirects` : Fallback pour Netlify
+
+---
+
+## 🤝 Contribution
+
+### Guidelines
+
+1. **Mobile-first** : Tester sur petits écrans
+2. **Dark mode** : Vérifier les deux thèmes
+3. **Accessibilité** : Tailles tactiles min 44px
+4. **Performance** : Éviter re-renders inutiles (`useMemo`, `useCallback`)
+
+### Bonnes Pratiques CSS
+
+- Préserver `@custom-variant dark` en tête de `index.css`
+- Utiliser les classes utilitaires existantes (`.glass`, `.glass-panel`)
+- Respecter la nomenclature Tailwind
+
+### Problèmes Connus
+
+- Bundles JS volumineuses (> 500kb) — code-splitting recommandé
+- Linter CSS signale `@apply` / `@theme` comme inconnus (faux positifs Tailwind 4)
+
+---
+
+## 📞 Contact
+
+- **Repository** : [GitHub - geo-front](https://github.com/Tiger-Foxx/geo-front)
+- **Équipe** : FOX Mapping Team
+
+---
+
+_Documentation mise à jour : Janvier 2026_

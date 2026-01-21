@@ -80,3 +80,48 @@
   @apply bg-slate-400/20 dark:bg-neutral-600/30;
 }
 
+/* Dark Mode Leaflet */
+.dark .leaflet-container {
+  background: #0a0a0a !important;
+}
+
+/* Animation Utilities */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideInFromRight {
+  from { transform: translateX(8px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-in {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+.fade-in {
+  animation-name: fadeIn;
+}
+.slide-in-from-right-2 {
+  animation-name: slideInFromRight;
+}
+
+/* Diagonal Stripes Pattern (for unavailable data) */
+.diagonal-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(0, 0, 0, 0.03) 4px,
+    rgba(0, 0, 0, 0.03) 8px
+  );
+}
+.dark .diagonal-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(255, 255, 255, 0.02) 4px,
+    rgba(255, 255, 255, 0.02) 8px
+  );
+}

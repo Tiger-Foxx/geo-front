@@ -31,7 +31,7 @@ export const aggregateDataByDepartment = (filteredData: DataPoint[]) => {
     if (!aggregation[item.department]) {
       aggregation[item.department] = { total: 0, count: 0 };
     }
-    aggregation[item.department].total += item.value;
+    aggregation[item.department].total += item.value ?? 0;
     aggregation[item.department].count += 1;
   });
 
@@ -58,3 +58,52 @@ export const pivotByYear = (data: DataPoint[], indicator: string): any[] => {
         return row;
     });
 }
+
+/**
+ * Data Display States:
+ * - null/undefined: "Indisponible" (data not collected/available for this cell)
+ * - 0: Valid value, means "no production" (gray/white on map)
+ * - number > 0: Normal display with color intensity
+ */
+export type DataState = 'unavailable' | 'zero' | 'hasValue';
+
+export const getDataState = (value: number | null | undefined): DataState => {
+    if (value === null || value === undefined) return 'unavailable';
+    if (value === 0) return 'zero';
+    return 'hasValue';
+};
+
+export const formatCellValue = (value: number | null | undefined, unit?: string): string => {
+    const state = getDataState(value);
+    if (state === 'unavailable') return 'Indisponible';
+    if (state === 'zero') return '0';
+    return value!.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + (unit ? ` ${unit}` : '');
+};
+
+/**
+ * Sector-specific year range constraints based on available data
+ */
+export const SECTOR_YEAR_RANGES = {
+    agriculture: { min: 1998, max: 2022, granularity: 'departement' as const },
+    elevage: { 
+        national: { min: 2015, max: 2021 },
+        regional: { min: 2020, max: 2021 },
+        departement: null // Not available
+    },
+    peche: { min: 2021, max: 2021, granularity: 'departement' as const }
+} as const;
+
+export const isYearAvailable = (sector: 'agriculture' | 'elevage' | 'peche', year: number, level: 'national' | 'regional' | 'departement'): boolean => {
+    if (sector === 'agriculture') {
+        return year >= 1998 && year <= 2022;
+    }
+    if (sector === 'elevage') {
+        if (level === 'national') return year >= 2015 && year <= 2021;
+        if (level === 'regional') return year >= 2020 && year <= 2021;
+        return false; // departement not available for elevage
+    }
+    if (sector === 'peche') {
+        return year === 2021;
+    }
+    return false;
+};

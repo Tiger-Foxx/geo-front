@@ -1,20 +1,18 @@
-import { MapContainer as LeafletMap, TileLayer, Polygon, Popup, ZoomControl } from 'react-leaflet';
+import { MapContainer as LeafletMap, TileLayer, GeoJSON, ZoomControl, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DataPoint } from '../../data/mockData';
-import { useMemo } from 'react';
-
-// Corrections for default icon issues in React-Leaflet
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import L from 'leaflet';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
+// Fix default icon
 let DefaultIcon = L.icon({
     iconUrl: icon,
     shadowUrl: iconShadow,
     iconSize: [25, 41],
     iconAnchor: [12, 41]
 });
-
 L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapContainerProps {
@@ -23,11 +21,13 @@ interface MapContainerProps {
   product: string;
   indicator: string;
   basemap?: BasemapType;
+  adminLevel?: 'region' | 'department' | 'commune';
+  onFeatureClick?: (feature: any) => void;
 }
 
 export type BasemapType = 'light' | 'dark' | 'satellite' | 'terrain' | 'osm';
 
-const BASEMAP_URLS = {
+const BASEMAP_URLS: Record<BasemapType, string> = {
     light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
     dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -35,77 +35,258 @@ const BASEMAP_URLS = {
     osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 };
 
-// Placeholder for Cameroon Departments GeoJSON (Simplified)
-// In a real app, this would be fetched from a .geojson file
-const MOCK_GEOJSON_DEPARTMENTS = [
-  { name: 'Mfoundi', coords: [[3.84, 11.50], [3.90, 11.50], [3.90, 11.55], [3.84, 11.55]] }, // Yaoundé area
-  { name: 'Wouri', coords: [[4.05, 9.70], [4.10, 9.70], [4.10, 9.75], [4.05, 9.75]] }, // Douala area
-  // Add more conceptual squares for demo purposes if needed
-];
+// Cameroon Regions GeoJSON (Simplified placeholder - real data should come from files)
+const CAMEROON_REGIONS_GEOJSON = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", properties: { name: "Centre", code: "CE", capital: "Yaoundé" }, geometry: { type: "Polygon", coordinates: [[[11.0, 3.0], [13.0, 3.0], [13.0, 5.5], [11.0, 5.5], [11.0, 3.0]]] }},
+    { type: "Feature", properties: { name: "Littoral", code: "LT", capital: "Douala" }, geometry: { type: "Polygon", coordinates: [[[9.0, 3.5], [10.5, 3.5], [10.5, 5.0], [9.0, 5.0], [9.0, 3.5]]] }},
+    { type: "Feature", properties: { name: "Ouest", code: "OU", capital: "Bafoussam" }, geometry: { type: "Polygon", coordinates: [[[9.5, 5.0], [11.0, 5.0], [11.0, 6.5], [9.5, 6.5], [9.5, 5.0]]] }},
+    { type: "Feature", properties: { name: "Sud-Ouest", code: "SW", capital: "Buéa" }, geometry: { type: "Polygon", coordinates: [[[8.5, 4.0], [9.5, 4.0], [9.5, 6.0], [8.5, 6.0], [8.5, 4.0]]] }},
+    { type: "Feature", properties: { name: "Nord-Ouest", code: "NW", capital: "Bamenda" }, geometry: { type: "Polygon", coordinates: [[[9.5, 5.5], [11.0, 5.5], [11.0, 7.0], [9.5, 7.0], [9.5, 5.5]]] }},
+    { type: "Feature", properties: { name: "Adamaoua", code: "AD", capital: "Ngaoundéré" }, geometry: { type: "Polygon", coordinates: [[[11.0, 6.0], [15.0, 6.0], [15.0, 8.0], [11.0, 8.0], [11.0, 6.0]]] }},
+    { type: "Feature", properties: { name: "Nord", code: "NO", capital: "Garoua" }, geometry: { type: "Polygon", coordinates: [[[12.0, 8.0], [15.5, 8.0], [15.5, 10.5], [12.0, 10.5], [12.0, 8.0]]] }},
+    { type: "Feature", properties: { name: "Extreme-Nord", code: "EN", capital: "Maroua" }, geometry: { type: "Polygon", coordinates: [[[13.5, 10.0], [15.5, 10.0], [15.5, 13.0], [13.5, 13.0], [13.5, 10.0]]] }},
+    { type: "Feature", properties: { name: "Est", code: "ES", capital: "Bertoua" }, geometry: { type: "Polygon", coordinates: [[[13.0, 2.0], [16.5, 2.0], [16.5, 6.0], [13.0, 6.0], [13.0, 2.0]]] }},
+    { type: "Feature", properties: { name: "Sud", code: "SU", capital: "Ebolowa" }, geometry: { type: "Polygon", coordinates: [[[9.5, 2.0], [12.5, 2.0], [12.5, 3.5], [9.5, 3.5], [9.5, 2.0]]] }},
+  ]
+} as any;
 
-export const MapContainer = ({ data, year, product, indicator, basemap = 'osm' }: MapContainerProps) => {
-  const center: [number, number] = [7.3697, 12.3547]; // Cameroon Center
+// Dynamic color scale based on data range
+const getColorScale = (value: number | null, min: number, max: number, isDark: boolean): string => {
+  if (value === null) return isDark ? '#374151' : '#E5E7EB'; // Unavailable: gray
+  if (value === 0) return isDark ? '#1F2937' : '#F9FAFB'; // Zero: very light
+  
+  const normalized = Math.min(1, Math.max(0, (value - min) / (max - min || 1)));
+  
+  // Cameroon-themed gradient: Yellow -> Green -> Dark Green
+  const colors = [
+    { r: 255, g: 205, b: 0 },   // Yellow (#FFCD00)
+    { r: 76, g: 154, b: 42 },   // Light Green
+    { r: 5, g: 107, b: 50 },    // Cameroon Green (#056B32)
+  ];
+  
+  const idx = normalized * (colors.length - 1);
+  const lower = Math.floor(idx);
+  const upper = Math.min(lower + 1, colors.length - 1);
+  const t = idx - lower;
+  
+  const r = Math.round(colors[lower].r + t * (colors[upper].r - colors[lower].r));
+  const g = Math.round(colors[lower].g + t * (colors[upper].g - colors[lower].g));
+  const b = Math.round(colors[lower].b + t * (colors[upper].b - colors[lower].b));
+  
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+// Component to handle map updates when props change
+const MapUpdater = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, zoom, { duration: 0.8, easeLinearity: 0.5 });
+  }, [center, zoom, map]);
+  return null;
+};
+
+// Hover Info Panel Component
+const HoverInfoPanel = ({ feature, value, unit, year, status }: { 
+  feature: any; 
+  value: number | null; 
+  unit: string;
+  year: number;
+  status: string;
+}) => {
+  if (!feature) return null;
+  
+  return (
+    <div className="absolute top-4 right-4 z-[1500] glass-panel p-4 rounded-xl shadow-2xl min-w-[200px] pointer-events-none animate-in fade-in slide-in-from-right-2 duration-200">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-3 h-3 rounded-full bg-cameroon-green" />
+        <h3 className="font-bold text-slate-900 dark:text-white text-sm">{feature.properties.name}</h3>
+      </div>
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500 dark:text-neutral-400">Année</span>
+          <span className="font-mono font-medium text-slate-700 dark:text-neutral-200">{year}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500 dark:text-neutral-400">Valeur</span>
+          <span className={`font-mono font-bold ${status === 'unavailable' ? 'text-slate-400 italic' : value === 0 ? 'text-slate-400' : 'text-cameroon-green'}`}>
+            {status === 'unavailable' ? 'Indisponible' : value === 0 ? '0' : `${value?.toLocaleString('fr-FR')} ${unit}`}
+          </span>
+        </div>
+        {feature.properties.capital && (
+          <div className="flex justify-between text-xs pt-1 border-t border-slate-100 dark:border-white/5">
+            <span className="text-slate-500 dark:text-neutral-400">Chef-lieu</span>
+            <span className="text-slate-600 dark:text-neutral-300">{feature.properties.capital}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', adminLevel = 'region', onFeatureClick }: MapContainerProps) => {
+  const center: [number, number] = [7.3697, 12.3547];
   const zoom = 6;
+  const [hoveredFeature, setHoveredFeature] = useState<any>(null);
+  const [hoveredValue, setHoveredValue] = useState<number | null>(null);
+  const [hoveredStatus, setHoveredStatus] = useState<string>('confirmed');
+  
+  const isDark = useMemo(() => {
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  }, []);
 
-  // Memoize data aggregation for the current view
-  const departmentValues = useMemo(() => {
-    const map = new Map<string, number>();
+  // Aggregate data by selected admin level (region or department)
+  const aggregatedData = useMemo(() => {
+    const map = new Map<string, { value: number | null; status: string; count: number }>();
+    
     data.forEach(d => {
       if (d.season_year === year && d.product === product && d.indicator === indicator) {
-        map.set(d.department, d.value ?? 0);
+        // Use region or department based on adminLevel
+        const key = adminLevel === 'department' ? d.department : d.region;
+        const existing = map.get(key);
+        if (!existing) {
+          map.set(key, { value: d.value, status: d.status, count: 1 });
+        } else {
+          // Aggregate values
+          if (d.value !== null && existing.value !== null) {
+            map.set(key, { 
+              value: existing.value + d.value, 
+              status: d.status === 'unavailable' ? 'unavailable' : existing.status,
+              count: existing.count + 1 
+            });
+          }
+        }
       }
     });
+    
     return map;
-  }, [data, year, product, indicator]);
+  }, [data, year, product, indicator, adminLevel]);
 
-  const getColor = (val: number) => {
-      // Simple threshold-based coloring for demo
-      return val > 5000 ? '#056B32' :
-             val > 1000 ? '#4C9A2A' :
-             val > 500  ? '#8FBC8F' :
-             val > 0    ? '#FFCD00' :
-                          '#FFFFFF';
-  };
+  // Get min/max for color scaling
+  const { min, max } = useMemo(() => {
+    const values = Array.from(aggregatedData.values())
+      .filter(v => v.value !== null && v.value > 0)
+      .map(v => v.value as number);
+    return {
+      min: Math.min(...values, 0),
+      max: Math.max(...values, 1)
+    };
+  }, [aggregatedData]);
+
+  // Get unit for display
+  const unit = useMemo(() => {
+    const sample = data.find(d => d.product === product && d.indicator === indicator);
+    return sample?.unit || 'tonnes';
+  }, [data, product, indicator]);
+
+  // GeoJSON style function
+  const getFeatureStyle = useCallback((feature: any) => {
+    const featureName = feature.properties.name;
+    const featureInfo = aggregatedData.get(featureName);
+    const value = featureInfo?.value ?? null;
+    const isHovered = hoveredFeature?.properties?.name === featureName;
+    
+    return {
+      fillColor: getColorScale(value, min, max, isDark),
+      fillOpacity: isHovered ? 0.9 : 0.7,
+      weight: isHovered ? 3 : 1.5,
+      opacity: 1,
+      color: isHovered ? '#056B32' : (isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)'),
+      dashArray: featureInfo?.status === 'unavailable' ? '4, 4' : undefined,
+    };
+  }, [aggregatedData, min, max, isDark, hoveredFeature]);
+
+  // Event handlers for GeoJSON features
+  const onEachFeature = useCallback((feature: any, layer: L.Layer) => {
+    layer.on({
+      mouseover: (e: L.LeafletMouseEvent) => {
+        const featureInfo = aggregatedData.get(feature.properties.name);
+        setHoveredFeature(feature);
+        setHoveredValue(featureInfo?.value ?? null);
+        setHoveredStatus(featureInfo?.status || 'unavailable');
+        
+        const target = e.target as L.Path;
+        target.setStyle({
+          weight: 3,
+          color: '#056B32',
+          fillOpacity: 0.9,
+        });
+        target.bringToFront();
+      },
+      mouseout: (e: L.LeafletMouseEvent) => {
+        setHoveredFeature(null);
+        const target = e.target as L.Path;
+        target.setStyle(getFeatureStyle(feature));
+      },
+      click: () => {
+        if (onFeatureClick) {
+          onFeatureClick(feature);
+        }
+      }
+    });
+  }, [aggregatedData, getFeatureStyle, onFeatureClick]);
 
   return (
-    <LeafletMap center={center} zoom={zoom} scrollWheelZoom={true} zoomControl={false} className="h-full w-full z-0" style={{ background: '#f8fafc' }}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url={BASEMAP_URLS[basemap]} 
+    <div className="relative h-full w-full">
+      <LeafletMap 
+        center={center} 
+        zoom={zoom} 
+        scrollWheelZoom={true} 
+        zoomControl={false} 
+        className="h-full w-full z-0" 
+        style={{ background: isDark ? '#0a0a0a' : '#f8fafc' }}
+      >
+        <MapUpdater center={center} zoom={zoom} />
+        
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url={BASEMAP_URLS[basemap]} 
+        />
+        
+        <ZoomControl position="bottomright" />
+        
+        <GeoJSON 
+          key={`${year}-${product}-${indicator}-${basemap}`}
+          data={CAMEROON_REGIONS_GEOJSON}
+          style={getFeatureStyle}
+          onEachFeature={onEachFeature}
+        />
+      </LeafletMap>
+      
+      {/* Hover Info Panel */}
+      <HoverInfoPanel 
+        feature={hoveredFeature} 
+        value={hoveredValue}
+        unit={unit}
+        year={year}
+        status={hoveredStatus}
       />
       
-      <ZoomControl position="bottomright" />
-      
-      {/* 
-        This is where we would map through the real GeoJSON features.
-        For now, we don't have the polygons, so we just show the base map.
-        I've added a few dummy polygons to demonstrate logic.
-      */}
-      {MOCK_GEOJSON_DEPARTMENTS.map((dept, idx) => {
-         const val = departmentValues.get(dept.name) || 0;
-         return (
-          <Polygon 
-            key={idx} 
-            pathOptions={{ 
-                fillColor: getColor(val), 
-                fillOpacity: 0.7, 
-                weight: 1, 
-                opacity: 1, 
-                color: 'white' 
-            }} 
-            positions={dept.coords as [number, number][]}
-          >
-            <Popup>
-              <div className="text-center">
-                <h3 className="font-bold text-gray-800">{dept.name}</h3>
-                <p className="text-sm text-gray-600">
-                  {val.toLocaleString()} {indicator === 'Yield' ? 'mt/ha' : 'tonnes'}
-                </p>
-              </div>
-            </Popup>
-          </Polygon>
-         )
-      })}
-    </LeafletMap>
+      {/* Floating Legend */}
+      <div className="absolute bottom-24 right-4 z-[1000] glass-panel p-4 rounded-xl shadow-lg">
+        <h4 className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-widest mb-3">
+          {indicator} ({year})
+        </h4>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-mono text-slate-400">0</span>
+          <div className="h-2 w-28 rounded-full bg-gradient-to-r from-cameroon-yellow via-green-500 to-cameroon-green shadow-inner" />
+          <span className="text-[9px] font-mono text-slate-400">{max.toLocaleString('fr-FR')}</span>
+        </div>
+        <div className="flex gap-3 mt-3 pt-2 border-t border-slate-100 dark:border-white/5">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded border-2 border-dashed border-slate-300 dark:border-neutral-600 bg-slate-100 dark:bg-neutral-800" />
+            <span className="text-[9px] text-slate-500 dark:text-neutral-400">Indispo.</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700" />
+            <span className="text-[9px] text-slate-500 dark:text-neutral-400">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

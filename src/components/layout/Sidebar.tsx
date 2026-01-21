@@ -173,50 +173,62 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
         </div>
       </motion.div>
 
-      {/* 2. Floating Content Panel (The "Sheet") */}
+      {/* 2. Floating Content Panel (The "Sheet") + Desktop Backdrop */}
       <AnimatePresence mode="wait">
         {activePanel && (
-          <motion.div
-            initial={{ x: -20, opacity: 0, scale: 0.95 }}
-            animate={{ x: 0, opacity: 1, scale: 1 }}
-            exit={{ x: -20, opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className={`${isMobileSidebarOpen ? 'flex fixed' : 'hidden'} md:flex md:relative w-[85vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3009] md:z-auto left-16 bottom-2 md:left-auto md:bottom-auto`}
-          >
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                 <div className={clsx("p-2 rounded-lg bg-green-50 dark:bg-cameroon-green/10 text-cameroon-green")}>
-                    {activeTheme === 'agriculture' && <Wheat size={18} />}
-                    {activeTheme === 'elevage' && <Beef size={18} />}
-                    {activeTheme === 'peche' && <Fish size={18} />}
-                    {activeTheme === 'overview' && <LayoutGrid size={18} />}
-                 </div>
-                 <h2 className="font-bold text-slate-900 dark:text-white capitalize tracking-tight">
-                    {activeTheme === 'overview' ? 'Vue Globale' : activeTheme}
-                 </h2>
+          <>
+            {/* Invisible click-outside backdrop for DESKTOP */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onTogglePanel}
+              className="hidden md:block fixed inset-0 z-[2500] cursor-default"
+              style={{ background: 'transparent' }}
+            />
+            
+            <motion.div
+              initial={{ x: -20, opacity: 0, scale: 0.95 }}
+              animate={{ x: 0, opacity: 1, scale: 1 }}
+              exit={{ x: -20, opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className={`${isMobileSidebarOpen ? 'flex fixed' : 'hidden'} md:flex md:relative w-[85vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3009] md:z-[2600] left-16 bottom-2 md:left-auto md:bottom-auto`}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                   <div className={clsx("p-2 rounded-lg bg-green-50 dark:bg-cameroon-green/10 text-cameroon-green")}>
+                      {activeTheme === 'agriculture' && <Wheat size={18} />}
+                      {activeTheme === 'elevage' && <Beef size={18} />}
+                      {activeTheme === 'peche' && <Fish size={18} />}
+                      {activeTheme === 'overview' && <LayoutGrid size={18} />}
+                   </div>
+                   <h2 className="font-bold text-slate-900 dark:text-white capitalize tracking-tight">
+                      {activeTheme === 'overview' ? 'Vue Globale' : activeTheme}
+                   </h2>
+                </div>
+                <button 
+                  onClick={onTogglePanel} 
+                  className="p-1.5 hover:bg-slate-200/50 dark:hover:bg-white/10 rounded-full transition-colors text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-white"
+                >
+                  <ChevronLeft size={20} />
+                </button>
               </div>
-              <button 
-                onClick={onTogglePanel} 
-                className="p-1.5 hover:bg-slate-200/50 dark:hover:bg-white/10 rounded-full transition-colors text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-white"
-              >
-                <ChevronLeft size={20} />
-              </button>
-            </div>
 
-            {/* Content Area */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-2">
-              <div className="h-full pr-2">
-                  {children}
-                  {/* Fallback internal nav if children not provided */}
-                  {!children && (
-                      <div className="p-4 text-center text-neutral-400 dark:text-neutral-500 text-sm">
-                          Sélectionnez une catégorie
-                      </div>
-                  )}
+              {/* Content Area */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-2">
+                <div className="h-full pr-2">
+                    {children}
+                    {/* Fallback internal nav if children not provided */}
+                    {!children && (
+                        <div className="p-4 text-center text-neutral-400 dark:text-neutral-500 text-sm">
+                            Sélectionnez une catégorie
+                        </div>
+                    )}
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
