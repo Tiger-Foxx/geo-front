@@ -3,117 +3,135 @@ import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { TabularView } from './TabularView';
 import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2 } from 'lucide-react';
-import { CROPS, LIVESTOCK, FISHERIES, generateMockData } from '../data/mockData';
+import { CROPS, LIVESTOCK, FISHERIES, INFRASTRUCTURES, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const Geoportal = () => {
-  // State: View & Theme
-  const [view, setView] = useState<'map' | 'table'>('map');
-  const [activeTheme, setActiveTheme] = useState<ThemeMode>('agriculture');
-  const [sidebarPanelOpen, setSidebarPanelOpen] = useState(false);
-
-  // State: Data & Layer Selection
-  const [activeAdminLevel, setActiveAdminLevel] = useState<'region' | 'department' | 'commune'>('department');
-  const [selectedProduct, setSelectedProduct] = useState(CROPS[0]);
-  const [years, setYears] = useState<number[]>([2022]);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showLayerConfig, setShowLayerConfig] = useState(true); // Default open for visibility
-  const [productSearchTerm, setProductSearchTerm] = useState('');
+    // State: View & Theme
+    const [view, setView] = useState<'map' | 'table'>('map');
+    const [activeTheme, setActiveTheme] = useState<ThemeMode>('agriculture');
+    const [sidebarPanelOpen, setSidebarPanelOpen] = useState(false);
   
-  // Basemap & LocalStorage
-  const [basemap, setBasemap] = useState<BasemapType>(() => {
-     return localStorage.getItem('fox_basemap') as BasemapType || 'osm';
-  });
-  const [showBasemapSelector, setShowBasemapSelector] = useState(false);
-  const [isDateWidgetCollapsed, setIsDateWidgetCollapsed] = useState(true);
-  const [, setUserOverrodeBasemap] = useState(false);
+    // State: Data & Layer Selection
+    const [activeAdminLevel, setActiveAdminLevel] = useState<'region' | 'department' | 'commune'>('department');
+    const [selectedProduct, setSelectedProduct] = useState(CROPS[0]);
+    const [years, setYears] = useState<number[]>([2022]);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [showLayerConfig, setShowLayerConfig] = useState(true); 
+    const [productSearchTerm, setProductSearchTerm] = useState('');
+    
+    // Dynamic Configuration based on Theme
+    const sectorConfig = useMemo(() => {
+        switch (activeTheme) {
+            case 'agriculture': return { products: CROPS, minYear: 1998, maxYear: 2022, defaultYear: 2022 };
+            case 'elevage': return { products: LIVESTOCK, minYear: 2015, maxYear: 2021, defaultYear: 2021 };
+            case 'peche': return { products: [...FISHERIES, ...INFRASTRUCTURES], minYear: 2015, maxYear: 2021, defaultYear: 2021 };
+            default: return { products: CROPS, minYear: 2000, maxYear: 2022, defaultYear: 2022 };
+        }
+    }, [activeTheme]);
 
-  // Handle manual basemap change by user
-  const handleBasemapChange = (newBasemap: BasemapType) => {
-    setBasemap(newBasemap);
-    setUserOverrodeBasemap(true); // User manually chose a basemap
-    localStorage.setItem('fox_basemap_user_override', 'true');
-  };
+    // Derived State for Products List
+    const currentList = useMemo(() => {
+        return sectorConfig.products
+            .filter(item => item.toLowerCase().includes(productSearchTerm.toLowerCase()))
+            .sort((a,b) => a.localeCompare(b));
+    }, [sectorConfig, productSearchTerm]);
 
-  // Sync Basemap with Dark Mode automatically (unless user overrode)
-  useEffect(() => {
-    const handleThemeChange = () => {
-      // Only auto-switch if user hasn't manually chosen a basemap
-      const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
-      if (!userOverride) {
-        const isDark = document.documentElement.classList.contains('dark');
-        setBasemap(isDark ? 'dark' : 'osm');
-      }
+    // Handle Theme Change
+    const handleThemeChange = (newTheme: ThemeMode) => {
+      setActiveTheme(newTheme);
+      setProductSearchTerm('');
+      
+      // Auto-select first product and safe default year
+      const newConfig = newTheme === 'agriculture' ? { products: CROPS, defaultYear: 2022 } 
+                      : newTheme === 'elevage' ? { products: LIVESTOCK, defaultYear: 2021 }
+                      : { products: FISHERIES, defaultYear: 2021 };
+                      
+      setSelectedProduct(newConfig.products[0]);
+      setYears([newConfig.defaultYear]);
     };
     
-    // Initial load: respect theme if no user override
-    const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
-    if (!userOverride) {
-      const isDark = localStorage.getItem('fox_theme') === 'dark';
-      setBasemap(isDark ? 'dark' : 'osm');
-    }
-
-    window.addEventListener('theme-change', handleThemeChange);
-    return () => window.removeEventListener('theme-change', handleThemeChange);
-  }, []);
-
-  useEffect(() => {
-     localStorage.setItem('fox_basemap', basemap);
-  }, [basemap]);
+    // Basemap & LocalStorage
+    const [basemap, setBasemap] = useState<BasemapType>(() => {
+       return localStorage.getItem('fox_basemap') as BasemapType || 'osm';
+    });
+    const [showBasemapSelector, setShowBasemapSelector] = useState(false);
+    const [isDateWidgetCollapsed, setIsDateWidgetCollapsed] = useState(false);
+    const [, setUserOverrodeBasemap] = useState(false);
   
-  // Memoize data to prevent re-generation on every render (Fixes performance issues)
-  const data = useMemo(() => generateMockData(), []);
-
-  const currentList = useMemo(() => {
-      const list = activeTheme === 'agriculture' ? CROPS :
-                   activeTheme === 'elevage' ? LIVESTOCK :
-                   activeTheme === 'peche' ? FISHERIES : [];
-      return list
-          .filter(item => item.toLowerCase().includes(productSearchTerm.toLowerCase()))
-          .sort((a,b) => a.localeCompare(b));
-  }, [activeTheme, productSearchTerm]);
-
-  const handleProductSelect = (p: string) => {
-      setSelectedProduct(p);
-  };
-
-  // Animation Loop for Timeline
-  useEffect(() => {
-    let interval: any;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setYears(prev => {
-           const current = prev[0];
-           const next = current >= 2026 ? 2000 : current + 1;
-           return [next];
-        });
-      }, 1500);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  const toggleYear = (y: number) => {
-      setYears(prev => {
-          if (prev.includes(y)) return prev.filter(yr => yr !== y);
-          return [...prev, y].sort((a,b) => b - a);
-      });
-  };
-
-  const availableYears = Array.from({ length: 27 }, (_, i) => 2026 - i); // 2026 down to 2000
-
-  // Handle Theme Change logic
-  const handleThemeChange = (newTheme: ThemeMode) => {
-    setActiveTheme(newTheme);
-    setProductSearchTerm(''); // Reset search
-    if (newTheme === 'agriculture') setSelectedProduct(CROPS[0]);
-    if (newTheme === 'elevage') setSelectedProduct(LIVESTOCK[0]);
-    if (newTheme === 'peche') setSelectedProduct(FISHERIES[0]);
-  };
-
-  return (
-    <div className="relative h-screen w-full bg-slate-50 flex overflow-hidden font-sans">
+    // Handle manual basemap change by user
+    const handleBasemapChange = (newBasemap: BasemapType) => {
+      setBasemap(newBasemap);
+      setUserOverrodeBasemap(true); // User manually chose a basemap
+      localStorage.setItem('fox_basemap_user_override', 'true');
+    };
+  
+    // Sync Basemap with Dark Mode automatically (unless user overrode)
+    useEffect(() => {
+      const handleThemeChange = () => {
+        // Only auto-switch if user hasn't manually chosen a basemap
+        const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
+        if (!userOverride) {
+          const isDark = document.documentElement.classList.contains('dark');
+          setBasemap(isDark ? 'dark' : 'osm');
+        }
+      };
       
-      {/* 1. Global Sidebar (The Dock) */}
+      // Initial load: respect theme if no user override
+      const userOverride = localStorage.getItem('fox_basemap_user_override') === 'true';
+      if (!userOverride) {
+        const isDark = localStorage.getItem('fox_theme') === 'dark';
+        setBasemap(isDark ? 'dark' : 'osm');
+      }
+  
+      window.addEventListener('theme-change', handleThemeChange);
+      return () => window.removeEventListener('theme-change', handleThemeChange);
+    }, []);
+  
+    useEffect(() => {
+       localStorage.setItem('fox_basemap', basemap);
+    }, [basemap]);
+    
+    // Memoize data to prevent re-generation on every render (Fixes performance issues)
+    const data = useMemo(() => generateMockData(), []);
+  
+    const handleProductSelect = (p: string) => {
+        setSelectedProduct(p);
+    };
+  
+    // Animation Loop for Timeline
+    useEffect(() => {
+      let interval: any;
+      if (isPlaying) {
+        interval = setInterval(() => {
+          setYears(prev => {
+             const current = prev[0];
+             const max = sectorConfig.maxYear;
+             const min = sectorConfig.minYear;
+             const next = current >= max ? min : current + 1;
+             return [next];
+          });
+        }, 1500);
+      }
+      return () => clearInterval(interval);
+    }, [isPlaying, sectorConfig]);
+  
+    const toggleYear = (y: number) => {
+        setYears(prev => {
+            // Single year selection mode for now, to keep map simple
+            return [y];
+        });
+    };
+  
+    const availableYears = Array.from(
+        { length: sectorConfig.maxYear - sectorConfig.minYear + 1 }, 
+        (_, i) => sectorConfig.maxYear - i
+    );
+  
+    return (
+      <div className="relative h-screen w-full bg-slate-50 flex overflow-hidden font-sans">
+        
+        {/* 1. Global Sidebar (The Dock) */}
       <Sidebar 
         view={view} 
         onViewChange={setView}
