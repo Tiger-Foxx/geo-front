@@ -168,15 +168,27 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
   const zoom = 6;
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isMapLoading, setIsMapLoading] = useState(true);
   
   // Capture map instance
   const MapInstanceCapture = () => {
     const map = useMap();
     useEffect(() => {
         if (onMapReady) onMapReady(map);
-    }, [map, onMapReady]);
+        // Map is ready when tiles load
+        map.whenReady(() => {
+          setTimeout(() => setIsMapLoading(false), 200);
+        });
+    }, [map]);
     return null;
   };
+  
+  // Show loading when data changes
+  useEffect(() => {
+    setIsMapLoading(true);
+    const timer = setTimeout(() => setIsMapLoading(false), 400);
+    return () => clearTimeout(timer);
+  }, [year, product, indicator]);
   
   const isDark = useMemo(() => {
     if (typeof document !== 'undefined') {
@@ -277,6 +289,17 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
   return (
     <>
       <div className="relative h-full w-full isolate">
+        
+        {/* Elegant Map Loading Indicator */}
+        {isMapLoading && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 px-4 py-2 bg-white/90 dark:bg-black/90 backdrop-blur-md rounded-full border border-slate-200/50 dark:border-white/10 shadow-lg">
+            <div className="loader-spinner" style={{ width: 14, height: 14, borderWidth: 1.5 }} />
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">
+              Actualisation...
+            </span>
+          </div>
+        )}
+        
         <LeafletMap 
           center={center} 
           zoom={zoom} 

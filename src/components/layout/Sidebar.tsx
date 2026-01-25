@@ -1,12 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun, Menu, X } from 'lucide-react';
+import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun, Menu, X, Command } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 type ViewMode = 'map' | 'table';
 export type ThemeMode = 'agriculture' | 'elevage' | 'peche' | 'overview';
-
-import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
   view: ViewMode;
@@ -19,52 +18,63 @@ interface SidebarProps {
   children?: React.ReactNode;
 }
 
-export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, activePanel, onTogglePanel, onSettingsClick, children }: SidebarProps) => {
+export const Sidebar = ({ 
+    view, 
+    onViewChange, 
+    activeTheme, 
+    onThemeChange, 
+    activePanel, 
+    onTogglePanel, 
+    onSettingsClick, 
+    children 
+}: SidebarProps) => {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() => {
-    // Strict priority: 1. LocalStorage. Default: Light.
     const saved = localStorage.getItem('fox_theme');
     return saved === 'dark';
   });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
-    // Reset basemap override when user manually toggles theme
-    localStorage.removeItem('fox_basemap_user_override');
+    localStorage.removeItem('fox_basemap_user_override'); // Reset basemap on theme toggle
   };
 
   useEffect(() => {
+    const root = document.documentElement;
     if (isDark) {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
       localStorage.setItem('fox_theme', 'dark');
-      // Dispatch event for other components (like Map) to react
       window.dispatchEvent(new Event('theme-change'));
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark');
       localStorage.setItem('fox_theme', 'light');
       window.dispatchEvent(new Event('theme-change'));
     }
   }, [isDark]);
 
   const mainNav = [
-    { id: 'overview', icon: LayoutGrid, label: 'Référentiel admin.', type: 'theme' },
+    { id: 'overview', icon: LayoutGrid, label: 'Vue Globale', type: 'theme' },
     { id: 'agriculture', icon: Wheat, label: 'Agriculture', type: 'theme' },
     { id: 'elevage', icon: Beef, label: 'Élevage', type: 'theme' },
     { id: 'peche', icon: Fish, label: 'Pêche', type: 'theme' },
   ];
 
   return (
-    <div className="fixed inset-y-2 md:inset-y-4 left-2 md:left-4 z-[3000] flex flex-col md:flex-row gap-2 md:gap-4 pointer-events-none">
-      {/* Mobile Toggle Button - Always visible on mobile */}
-      <button 
-        onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-        className="md:hidden pointer-events-auto w-10 h-10 flex items-center justify-center rounded-xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border border-slate-200 dark:border-white/20 shadow-lg text-slate-900 dark:text-white z-[3010]"
-      >
-        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+    <>
+      {/* --- MOBILE NAVIGATION TOGGLE --- */}
+      <div className="md:hidden fixed z-[3010] top-2 left-2">
+         <motion.button 
+             whileTap={{ scale: 0.9 }}
+             onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+             className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border border-slate-200 dark:border-white/20 shadow-lg text-slate-900 dark:text-white"
+         >
+           {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+         </motion.button>
+      </div>
 
-      {/* Mobile Overlay */}
+      {/* --- MOBILE OVERLAY --- */}
       <AnimatePresence>
         {isMobileSidebarOpen && (
           <motion.div
@@ -72,167 +82,234 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[3005]"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3005] md:hidden"
           />
         )}
       </AnimatePresence>
-      
-      {/* 1. Thin Utility Dock (The "Apple" Dock) - Hidden on mobile unless menu open */}
-      <motion.div 
-         initial={{ x: -20, opacity: 0 }}
-         animate={{ x: 0, opacity: 1 }}
-         className={`w-14 md:w-16 h-full flex-col items-center py-3 md:py-4 gap-3 md:gap-4 glass rounded-2xl md:rounded-3xl pointer-events-auto shadow-2xl relative z-[3010] ${isMobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}
-      >
-        {/* Brand - Coat of Arms */}
-        <div 
-           className="w-10 md:w-12 h-10 md:h-12 rounded-xl md:rounded-2xl mb-4 md:mb-6 flex items-center justify-center shadow-lg shadow-slate-900/10 dark:shadow-black/50 bg-white dark:bg-neutral-900 p-1.5 hover:scale-105 transition-transform cursor-pointer group border border-slate-100 dark:border-white/5"
-           onClick={() => navigate('/')}
-        >
-           <img 
-             src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Coat_of_arms_of_Cameroon.svg" 
-             alt="Cameroun" 
-             className="w-full h-full object-contain drop-shadow-sm group-hover:rotate-3 transition-transform duration-500"
-           />
-        </div>
+
+      <div className="fixed inset-y-0 left-0 z-[3000] flex items-start pointer-events-none p-2 md:p-4 gap-4">
         
-        {/* Core View Switcher (Map vs Table) */}
-        <div className="p-1 md:p-1.5 bg-slate-100/50 dark:bg-neutral-900/50 rounded-xl md:rounded-2xl flex flex-col gap-1.5 md:gap-2 mb-3 md:mb-4 backdrop-blur-sm border border-slate-200/50 dark:border-white/5">
-            <button 
-                onClick={() => onViewChange('map')}
-                className={clsx(
-                    "p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all duration-300",
-                    view === 'map' ? "bg-white dark:bg-neutral-800 text-cameroon-green shadow-md dark:shadow-black/50" : "text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300"
-                )}
-                title="Vue Carte"
-            >
-                <Map size={18} className="md:w-[20px] md:h-[20px]" />
-            </button>
-             <button 
-                onClick={() => onViewChange('table')}
-                 className={clsx(
-                    "p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all duration-300",
-                    view === 'table' ? "bg-white dark:bg-neutral-800 text-cameroon-green shadow-md dark:shadow-black/50" : "text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300"
-                )}
-                title="Vue Tabulaire"
-            >
-                <Table size={18} className="md:w-[20px] md:h-[20px]" />
-            </button>
-        </div>
+        {/* --- 1. THE DOCK (SIDEBAR STRIP) - NOW ADAPTIVE HEIGHT --- */}
+        <motion.div 
+           initial={{ x: -20, opacity: 0 }}
+           animate={{ x: 0, opacity: 1 }}
+           className={clsx(
+             "pointer-events-auto w-12 md:w-14 rounded-2xl flex flex-col items-center py-3 md:py-4 gap-3 glass",
+             "transition-transform duration-300 ease-in-out border border-white/20 dark:border-white/5 shadow-xl shadow-slate-900/5",
+             isMobileSidebarOpen ? "translate-x-0" : "-translate-x-[200%] md:translate-x-0"
+           )}
+        >
+          {/* BRAND */}
+          <div 
+             className="w-8 h-8 md:w-9 md:h-9 relative cursor-pointer group"
+             onClick={() => navigate('/')}
+          >
+             <div className="absolute inset-0 bg-cameroon-green/20 dark:bg-white/10 rounded-lg rotate-0 group-hover:rotate-12 transition-transform duration-500 blur-md" />
+             <div className="relative w-full h-full bg-white dark:bg-neutral-900 rounded-lg p-1 shadow-sm border border-slate-100 dark:border-white/5 group-hover:scale-105 transition-transform">
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Coat_of_arms_of_Cameroon.svg" 
+                  alt="Republic of Cameroon" 
+                  className="w-full h-full object-contain"
+                />
+             </div>
+          </div>
 
-        <div className="w-6 md:w-8 h-[1px] bg-slate-200 dark:bg-neutral-800" />
+          <div className="w-5 h-[1px] bg-slate-200 dark:bg-white/10" />
 
-        {/* Thematic Navigation */}
-        <div className="flex flex-col gap-2 md:gap-3 w-full px-1.5 md:px-2">
+          {/* VIEW SWITCHER (Map vs Table) */}
+          <div className="flex flex-col gap-1.5 w-full px-1.5">
+              <ViewButton 
+                active={view === 'map'} 
+                icon={Map} 
+                onClick={() => onViewChange('map')} 
+                label="Carte Interactive" 
+              />
+              <ViewButton 
+                active={view === 'table'} 
+                icon={Table} 
+                onClick={() => onViewChange('table')} 
+                label="Données Tabulaires" 
+              />
+          </div>
+
+          <div className="w-5 h-[1px] bg-slate-200 dark:bg-white/10" />
+
+          {/* THEMATIC NAVIGATION */}
+          <div className="flex flex-col gap-1.5 w-full px-1.5">
              {mainNav.map((item) => (
-                <button
-                    key={item.id}
-                    onClick={() => {
+                <NavButton
+                   key={item.id}
+                   item={item}
+                   isActive={activeTheme === item.id}
+                   onClick={() => {
                         if (activeTheme === item.id) {
                             onTogglePanel();
                         } else {
                             onThemeChange(item.id as ThemeMode);
                             if (!activePanel) onTogglePanel();
                         }
-                        // Keep sidebar open on mobile so user can see the panel
-                        // setIsMobileSidebarOpen(false); 
-                    }}
-                    className={clsx(
-                    "group relative p-2 md:p-3 rounded-lg md:rounded-xl transition-all duration-300 flex justify-center items-center",
-                    activeTheme === item.id 
-                        ? "bg-cameroon-green text-white shadow-lg shadow-cameroon-green/25" 
-                        : "text-slate-400 dark:text-neutral-500 hover:bg-white dark:hover:bg-neutral-800 hover:text-cameroon-green dark:hover:text-cameroon-green hover:shadow-sm"
-                    )}
-                >
-                    <item.icon size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />
-                    
-                    {/* Tooltip - z-index boosted and absolute positioning tweaked */}
-                    <span className="hidden md:block absolute left-16 px-3 py-1.5 bg-slate-900 dark:bg-neutral-800 text-white dark:text-neutral-200 text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-all translate-x-1 group-hover:translate-x-0 whitespace-nowrap pointer-events-none z-[9999] shadow-xl border border-white/10">
-                        {item.label}
-                    </span>
+                   }}
+                   isPanelOpen={activePanel}
+                   onVerify={() => setHoveredNav(item.id)}
+                   onLeave={() => setHoveredNav(null)}
+                />
+             ))}
+          </div>
+          
+          <div className="w-5 h-[1px] bg-slate-200 dark:bg-white/10" />
 
-                    {activeTheme === item.id && (
-                        <motion.div layoutId="active-indicator" className="absolute -right-1.5 md:-right-2 w-0.5 md:w-1 h-2 md:h-3 bg-cameroon-green rounded-full" />
-                    )}
-                </button>
-            ))}
-        </div>
-        
-        <div className="mt-auto flex flex-col gap-3 md:gap-4">
-             <button 
+          {/* BOTTOM CONTROLS - NO MORE mt-auto, dock is now adaptive */}
+          <div className="flex flex-col gap-1.5 w-full px-1.5">
+             <ViewButton 
+                active={false}
+                icon={isDark ? Sun : Moon}
                 onClick={toggleTheme}
-                className="p-2 md:p-3 text-slate-400 dark:text-neutral-500 hover:text-cameroon-green dark:hover:text-yellow-400 transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-lg md:rounded-xl"
-            >
-                {isDark ? <Sun size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} /> : <Moon size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />}
-            </button>
-             <button 
-                onClick={onSettingsClick}
-                className="p-2 md:p-3 text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-white transition-colors bg-white/0 hover:bg-white/50 dark:hover:bg-neutral-800 rounded-lg md:rounded-xl"
-            >
-                <Settings size={18} className="md:w-[22px] md:h-[22px]" strokeWidth={1.5} />
-            </button>
-        </div>
-      </motion.div>
+                label={isDark ? 'Mode Clair' : 'Mode Sombre'}
+                variant="utility"
+             />
+             <ViewButton 
+                 active={false}
+                 icon={Settings}
+                 onClick={onSettingsClick || (() => {})}
+                 label="Paramètres"
+                 variant="utility"
+             />
+          </div>
+        </motion.div>
 
-      {/* 2. Floating Content Panel (The "Sheet") + Desktop Backdrop */}
-      <AnimatePresence mode="wait">
-        {activePanel && (
-          <>
-            {/* Invisible click-outside backdrop for DESKTOP */}
+        {/* --- 2. THE CONTROL PANEL (FLOATING SHEET) - ADAPTIVE HEIGHT --- */}
+        <AnimatePresence mode="wait">
+          {activePanel && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onTogglePanel}
-              className="hidden md:block fixed inset-0 z-[2500] cursor-default"
-              style={{ background: 'transparent' }}
-            />
-            
-            <motion.div
-              initial={{ x: -20, opacity: 0, scale: 0.95 }}
+              initial={{ x: -20, opacity: 0, scale: 0.96 }}
               animate={{ x: 0, opacity: 1, scale: 1 }}
-              exit={{ x: -20, opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className={`${isMobileSidebarOpen ? 'flex fixed' : 'hidden'} md:flex md:relative w-[85vw] sm:w-80 md:w-80 h-[calc(100vh-1rem)] md:h-full glass-panel rounded-2xl md:rounded-3xl flex-col overflow-hidden pointer-events-auto z-[3009] md:z-[2600] left-16 bottom-2 md:left-auto md:bottom-auto`}
+              exit={{ x: -20, opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className="pointer-events-auto w-[85vw] sm:w-[320px] max-h-[calc(100vh-2rem)] flex flex-col shadow-2xl rounded-2xl glass-panel relative z-[2900] overflow-hidden border border-white/60 dark:border-white/10"
             >
-              {/* Header */}
-              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-white/50 dark:bg-black/50 backdrop-blur-md sticky top-0 z-10">
-                <div className="flex items-center gap-3">
-                   <div className={clsx("p-2 rounded-lg bg-green-50 dark:bg-cameroon-green/10 text-cameroon-green")}>
-                      {activeTheme === 'agriculture' && <Wheat size={18} />}
-                      {activeTheme === 'elevage' && <Beef size={18} />}
-                      {activeTheme === 'peche' && <Fish size={18} />}
-                      {activeTheme === 'overview' && <LayoutGrid size={18} />}
-                   </div>
-                   <h2 className="font-bold text-slate-900 dark:text-white capitalize tracking-tight">
-                     {activeTheme === 'overview' ? 'Référentiel admin.' : activeTheme}
-                   </h2>
-                </div>
-                <button 
-                  onClick={onTogglePanel} 
-                  className="p-1.5 hover:bg-slate-200/50 dark:hover:bg-white/10 rounded-full transition-colors text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-white"
-                >
-                  <ChevronLeft size={20} />
-                </button>
+              {/* DECORATIVE HEADER GLOW */}
+              <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-cameroon-green/5 to-transparent pointer-events-none" />
+
+              {/* PANEL HEADER - More compact */}
+              <div className="flex-none p-4 pb-2 relative z-10">
+                 <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-3">
+                       <div className="p-2 rounded-xl bg-gradient-to-br from-slate-100 to-white dark:from-neutral-800 dark:to-neutral-900 border border-slate-200/50 dark:border-white/10 shadow-sm">
+                          {activeTheme === 'agriculture' && <Wheat size={20} className="text-cameroon-green" />}
+                          {activeTheme === 'elevage' && <Beef size={20} className="text-amber-600" />}
+                          {activeTheme === 'peche' && <Fish size={20} className="text-blue-500" />}
+                          {activeTheme === 'overview' && <LayoutGrid size={20} className="text-slate-600 dark:text-neutral-300" />}
+                       </div>
+                       <div>
+                          <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight capitalize leading-tight">
+                             {activeTheme === 'overview' ? 'Référentiel' : activeTheme}
+                          </h2>
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
+                             {activeTheme === 'overview' ? 'Admin.' : 'Analyse'}
+                          </p>
+                       </div>
+                    </div>
+                    <button 
+                        onClick={onTogglePanel}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-neutral-500 transition-colors"
+                    >
+                        <ChevronLeft size={18} />
+                    </button>
+                 </div>
               </div>
 
-              {/* Content Area */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-2">
-                <div className="h-full pr-2">
-                    {children}
-                    {/* Fallback internal nav if children not provided */}
-                    {!children && (
-                        <div className="p-4 text-center text-neutral-400 dark:text-neutral-500 text-sm">
-                            Sélectionnez une catégorie
-                        </div>
-                    )}
-                </div>
+              {/* SCROLLABLE CONTENT AREA */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-4 relative z-10">
+                  <motion.div 
+                     initial={{ opacity: 0, y: 10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     transition={{ delay: 0.1 }}
+                     className="flex flex-col gap-6"
+                  >
+                     {children}
+                  </motion.div>
               </div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+        </AnimatePresence>
+
+      </div>
+    </>
   );
 };
+
+
+// --- SUB-COMPONENTS FOR CLEANER CODE ---
+
+const ViewButton = ({ active, icon: Icon, onClick, label, variant = 'primary' }: any) => (
+  <div className="relative group w-full flex justify-center">
+      <button 
+        onClick={onClick}
+        className={clsx(
+            "p-2.5 rounded-xl transition-all duration-300 relative z-10",
+            active 
+              ? "text-white shadow-lg shadow-cameroon-green/20" 
+              : "text-slate-400 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-200"
+        )}
+      >
+        <Icon size={18} strokeWidth={active ? 2 : 1.5} />
+      </button>
+      
+      {/* Active Background Pill */}
+      {active && (
+         <motion.div 
+            layoutId="activeViewParams"
+            className="absolute inset-0 bg-cameroon-green rounded-xl z-0"
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+         />
+      )}
+
+      {/* Tooltip */}
+      <span className="hidden md:block absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-[4000] pointer-events-none shadow-xl">
+         {label}
+         <svg className="absolute text-slate-900 h-2 w-full left-0 top-1/2 -translate-x-[4px] -translate-y-1/2 rotate-90" x="0px" y="0px" viewBox="0 0 255 255"><polygon className="fill-current" points="0,0 127.5,127.5 255,0"/></svg>
+      </span>
+  </div>
+);
+
+const NavButton = ({ item, isActive, onClick, isPanelOpen, onVerify, onLeave }: any) => (
+  <div className="relative group w-full flex justify-center" onMouseEnter={onVerify} onMouseLeave={onLeave}>
+     <button
+        onClick={onClick}
+        className={clsx(
+            "p-2.5 rounded-xl transition-all duration-300 relative z-10 w-full flex items-center justify-center",
+            isActive 
+                 ? "text-white" 
+                 : "text-slate-400 dark:text-neutral-500 hover:text-cameroon-green dark:hover:text-cameroon-green"
+        )}
+     >
+        <item.icon size={20} strokeWidth={isActive ? 2 : 1.5} />
+     </button>
+
+     {/* Active Background */}
+     {isActive && (
+        <motion.div 
+            layoutId="activeThemeBg"
+            className="absolute inset-0 bg-cameroon-green shadow-lg shadow-cameroon-green/20 rounded-xl z-0"
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+         />
+     )}
+     
+     {/* Panel Connection Indicator (Small pip when panel is open) */}
+     {isActive && isPanelOpen && (
+        <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="hidden md:block absolute -right-6 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-cameroon-green shadow-[0_0_10px_rgba(5,107,50,0.5)] z-[3005]"
+        />
+     )}
+
+     {/* Tooltip */}
+      <span className="hidden md:block absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-[4000] pointer-events-none shadow-xl">
+         {item.label}
+         <svg className="absolute text-slate-900 h-2 w-full left-0 top-1/2 -translate-x-[4px] -translate-y-1/2 rotate-90" x="0px" y="0px" viewBox="0 0 255 255"><polygon className="fill-current" points="0,0 127.5,127.5 255,0"/></svg>
+      </span>
+  </div>
+);
 
 

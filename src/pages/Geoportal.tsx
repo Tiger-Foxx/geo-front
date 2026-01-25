@@ -3,9 +3,9 @@ import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { MapTools } from '../components/map/MapTools';
 import { TabularView } from './TabularView';
-import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2 } from 'lucide-react';
+import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2, Wheat, Beef, Fish, Eye, EyeOff } from 'lucide-react';
 import { CROPS, LIVESTOCK_FILIERES, FISHERIES, PECHE_INFRA_TYPES, AGRI_INDICATORS, generateMockData } from '../data/mockData';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import L from 'leaflet';
 
 export const Geoportal = () => {
@@ -24,12 +24,12 @@ export const Geoportal = () => {
     const [productSearchTerm, setProductSearchTerm] = useState('');
     
     // Layer visibility toggles - Ces couches sont RÉFÉRENTIELLES (pas d'analyse thématique)
-    const [visibleLayers, setVisibleLayers] = useState<{region: boolean; department: boolean; arrondissement: boolean; chefsLieux: boolean}>({ 
-      region: true, 
-      department: false, 
-      arrondissement: false,
-      chefsLieux: false 
-    });
+    const [layers, setLayers] = useState([
+      { id: 'region', label: 'Régions (10)', icon: Globe, visible: true },
+      { id: 'department', label: 'Départements (58)', icon: MapIcon, visible: false },
+      { id: 'arrondissement', label: 'Arrondissements', icon: Layers, visible: false },
+      { id: 'chefsLieux', label: 'Chefs-lieux', icon: MapIcon, visible: false }
+    ]);
 
     // Map Ref
     const mapRef = useRef<L.Map | null>(null);
@@ -171,10 +171,6 @@ export const Geoportal = () => {
         setSelectedProduct(p);
     };
 
-    const toggleLayerVisibility = (layer: 'region' | 'department' | 'arrondissement' | 'chefsLieux') => {
-        setVisibleLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
-    };
-
     const handleZoomIn = () => mapRef.current?.zoomIn();
     const handleZoomOut = () => mapRef.current?.zoomOut();
     const handleResetView = () => mapRef.current?.flyTo([7.3697, 12.3547], 6, { duration: 1.5 });
@@ -242,17 +238,20 @@ export const Geoportal = () => {
         onTogglePanel={() => setSidebarPanelOpen(!sidebarPanelOpen)}
         onSettingsClick={() => {}} 
       >
-        <div className="p-5 flex flex-col gap-8 h-full">
+        <div className="flex flex-col gap-6 h-full pb-4">
                 
           {/* Layer Visibility Toggles - ONLY IN REFERENTIAL MODE */}
           {activeTheme === 'overview' && (
           <div className="space-y-3">
              <div 
                onClick={() => setShowLayerConfig(!showLayerConfig)}
-               className="flex items-center justify-between cursor-pointer group"
+               className="flex items-center justify-between cursor-pointer group bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5 hover:border-cameroon-green/50 transition-colors"
              >
-                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em] group-hover:text-cameroon-green transition-colors">Limites Admin.</h3>
-                <ChevronRight size={14} className={`text-slate-300 dark:text-neutral-600 transition-transform ${showLayerConfig ? 'rotate-90' : ''}`} />
+                <div className="flex items-center gap-2">
+                    <Layers size={16} className="text-cameroon-green" />
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-neutral-300">CALQUES ADMINISTRATIFS</h3>
+                </div>
+                <ChevronRight size={14} className={`text-slate-400 dark:text-neutral-500 transition-transform ${showLayerConfig ? 'rotate-90' : ''}`} />
              </div>
              
              <AnimatePresence>
@@ -263,31 +262,46 @@ export const Geoportal = () => {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                     >
-                        <p className="text-[10px] text-slate-400 dark:text-neutral-600 mb-2 px-1">Couches de visualisation uniquement</p>
-                        <div className="flex flex-col gap-1.5 p-1">
-                            {[
-                                { id: 'region', label: 'Régions (10)', icon: Globe },
-                                { id: 'department', label: 'Départements (58)', icon: MapIcon },
-                                { id: 'arrondissement', label: 'Arrondissements', icon: Layers },
-                                { id: 'chefsLieux', label: 'Chefs-lieux', icon: MapIcon }
-                            ].map((level) => (
-                                <div
-                                    key={level.id}
-                                    onClick={() => toggleLayerVisibility(level.id as any)}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-[12px] font-medium cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all bg-white dark:bg-neutral-900 border border-slate-100 dark:border-white/10"
-                                >
-                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                                        visibleLayers[level.id as keyof typeof visibleLayers]
-                                            ? 'bg-cameroon-green border-cameroon-green' 
-                                            : 'border-slate-300 dark:border-neutral-600'
-                                    }`}>
-                                        {visibleLayers[level.id as keyof typeof visibleLayers] && <Check size={10} className="text-white" strokeWidth={3} />}
+                        <Reorder.Group axis="y" values={layers} onReorder={setLayers} className="flex flex-col gap-2 pt-1">
+                            {layers.map((layer) => (
+                                <Reorder.Item key={layer.id} value={layer} className="relative">
+                                    <div
+                                        className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all select-none bg-white dark:bg-neutral-900 ${
+                                            layer.visible 
+                                            ? 'border-cameroon-green/30 shadow-sm shadow-cameroon-green/5' 
+                                            : 'border-slate-100 dark:border-white/5 opacity-60'
+                                        }`}
+                                    >
+                                        <div className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-slate-300 dark:text-neutral-600 hover:text-slate-500 transition-colors">
+                                           <GripVertical size={14} />
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-center p-1.5 rounded-lg bg-slate-50 dark:bg-neutral-800 text-slate-500 dark:text-neutral-400">
+                                            <layer.icon size={14} />
+                                        </div>
+                                        
+                                        <span className={`flex-1 text-[12px] font-medium ${layer.visible ? 'text-slate-700 dark:text-neutral-200' : 'text-slate-400 dark:text-neutral-500'}`}>
+                                            {layer.label}
+                                        </span>
+
+                                        <button 
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onClick={() => {
+                                                const newLayers = layers.map(l => l.id === layer.id ? { ...l, visible: !l.visible } : l);
+                                                setLayers(newLayers);
+                                            }}
+                                            className={`p-1.5 rounded-lg transition-colors ${
+                                                layer.visible 
+                                                ? 'text-cameroon-green bg-cameroon-green/10 hover:bg-cameroon-green/20' 
+                                                : 'text-slate-400 hover:text-slate-600 dark:text-neutral-600 dark:hover:text-neutral-400'
+                                            }`}
+                                        >
+                                            {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                                        </button>
                                     </div>
-                                    <level.icon size={14} className="text-slate-400 dark:text-neutral-500" />
-                                    <span className="flex-1 text-left text-slate-600 dark:text-neutral-300">{level.label}</span>
-                                </div>
+                                </Reorder.Item>
                             ))}
-                        </div>
+                        </Reorder.Group>
                     </motion.div>
                 )}
              </AnimatePresence>
@@ -295,107 +309,132 @@ export const Geoportal = () => {
           )}
 
           {/* Product/Variable Selection */}
-          <div className="space-y-4 flex-1 overflow-hidden flex flex-col pt-2 border-t border-slate-50 dark:border-white/5">
-             <div className="flex flex-col gap-2 px-1">
-                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em]">
-                    {activeTheme === 'overview' ? 'Indicateurs' : activeTheme === 'elevage' ? 'Filières' : 'Cultures'}
-                </h3>
+          <div className="flex-1 overflow-hidden flex flex-col gap-4">
+             {/* Controls Group */}
+             <div className="flex flex-col gap-3">
                 
-                {/* Indicator Selector (for Agriculture) */}
+                {/* Indicator Selector (for Agriculture) - BUTTON GROUP STYLE */}
                 {activeTheme === 'agriculture' && (
-                    <div className="flex gap-1 p-0.5 bg-slate-100 dark:bg-neutral-900 rounded-lg">
+                    <div className="bg-slate-100 dark:bg-neutral-900 p-1 rounded-xl flex gap-1">
                         {sectorConfig.indicators.map(ind => (
                             <button
                                 key={ind}
                                 onClick={() => setSelectedIndicator(ind)}
-                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1 ${
+                                className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wide rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                                     selectedIndicator === ind
-                                        ? 'bg-white dark:bg-neutral-800 text-cameroon-green shadow-sm'
-                                        : 'text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300'
+                                        ? 'bg-white dark:bg-neutral-800 text-cameroon-green shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+                                        : 'text-slate-500 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-300 hover:bg-white/50 dark:hover:bg-white/5'
                                 }`}
                             >
-                                {ind === 'Production' && <BarChart2 size={10} />}
-                                {ind === 'Area Planted' && <Layers size={10} />}
-                                {ind === 'Yield' && <TrendingUp size={10} />}
-                                {ind === 'Production' ? 'Prod.' : ind === 'Area Planted' ? 'Surf.' : 'Rend.'}
+                                {ind === 'Production' && <BarChart2 size={12} />}
+                                {ind === 'Area Planted' && <Layers size={12} />}
+                                {ind === 'Yield' && <TrendingUp size={12} />}
+                                {ind === 'Production' ? 'Prod' : ind === 'Area Planted' ? 'Surface' : 'Rendement'}
                             </button>
                         ))}
                     </div>
                 )}
 
-                {/* Thematic Analysis Level (independent from admin layers) */}
+                {/* Thematic Analysis Level - TOGGLE STYLE */}
                 {activeTheme !== 'overview' && thematicLevels.length > 0 && (
-                    <div className="flex gap-1 p-0.5 bg-white dark:bg-neutral-900 rounded-lg border border-slate-100 dark:border-white/10">
-                        {(['region', 'department'] as const).map(level => {
-                            const isAvailable = thematicLevels.includes(level);
-                            return (
-                                <button
-                                    key={level}
-                                    onClick={() => isAvailable && setAnalysisLevel(level)}
-                                    className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all ${
-                                        analysisLevel === level
-                                            ? 'bg-cameroon-green text-white shadow-sm'
-                                            : isAvailable
-                                              ? 'text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300'
-                                              : 'text-slate-300 dark:text-neutral-700 cursor-not-allowed'
-                                    }`}
-                                >
-                                    {level === 'region' ? 'Régions' : 'Départ.'}
-                                </button>
-                            );
-                        })}
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-neutral-900/50 p-1 rounded-xl border border-slate-100 dark:border-white/10">
+                         <span className="text-[10px] font-bold  tracking-wider text-slate-400 dark:text-neutral-500 pl-3">Niv d'analyse :</span>
+                         <div className="flex gap-1">
+                            {(['region', 'department'] as const).map(level => {
+                                const isAvailable = thematicLevels.includes(level);
+                                return (
+                                    <button
+                                        key={level}
+                                        onClick={() => isAvailable && setAnalysisLevel(level)}
+                                        className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                                            analysisLevel === level
+                                                ? 'bg-cameroon-green text-white shadow-sm'
+                                                : isAvailable
+                                                ? 'text-slate-500 dark:text-neutral-500 hover:bg-white dark:hover:bg-neutral-800'
+                                                : 'text-slate-300 dark:text-neutral-800 cursor-not-allowed opacity-50'
+                                        }`}
+                                    >
+                                        {level === 'region' ? 'Région' : 'Département'}
+                                    </button>
+                                );
+                            })}
+                         </div>
                     </div>
                 )}
                 
-                {/* Info: Data Granularity */}
-                <div className="px-2 py-1.5 bg-slate-50 dark:bg-neutral-900 rounded-lg border border-slate-100 dark:border-white/5">
-                  <span className="text-[9px] font-medium text-slate-500 dark:text-neutral-500">
-                    Granularité : <span className="text-cameroon-green font-bold">{sectorConfig.granularity}</span>
-                    {activeTheme === 'agriculture' && ' • 1998-2022'}
-                    {activeTheme === 'elevage' && ' • 2020-2021'}
-                    {activeTheme === 'peche' && ' • 2021 uniquement'}
-                  </span>
-                </div>
-             </div>
-             
-             {/* Search Bar */}
-             {activeTheme !== 'overview' && (
-                <div className="px-1">
-                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-neutral-900 border border-slate-100 dark:border-white/10 rounded-lg px-2 py-1.5 focus-within:ring-1 focus-within:ring-cameroon-green/30 focus-within:bg-white dark:focus-within:bg-neutral-800 transition-all">
-                        <Search size={14} className="text-slate-400 dark:text-neutral-500" />
+                {/* Search Bar - IMPROVED */}
+                {activeTheme !== 'overview' && (
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                            <Search size={14} className="text-slate-400 dark:text-neutral-500 group-focus-within:text-cameroon-green transition-colors" />
+                        </div>
                         <input 
                             type="text" 
                             value={productSearchTerm}
                             onChange={(e) => setProductSearchTerm(e.target.value)}
-                            placeholder="Filtrer..."
-                            className="bg-transparent border-none text-[12px] w-full focus:outline-none placeholder:text-slate-400 dark:placeholder:text-neutral-500 dark:text-white"
+                            placeholder={activeTheme === 'agriculture' ? "Rechercher une culture..." : "Rechercher..."}
+                            className="w-full bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-white/10 rounded-xl py-2.5 pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-cameroon-green/20 focus:border-cameroon-green transition-all dark:text-white placeholder:text-slate-400 dark:placeholder:text-neutral-600"
                         />
                         {productSearchTerm && (
-                            <button onClick={() => setProductSearchTerm('')} className="text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-white"><X size={12} /></button>
+                            <button 
+                                onClick={() => setProductSearchTerm('')} 
+                                className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                            >
+                                <X size={14} />
+                            </button>
                         )}
                     </div>
-                </div>
-             )}
+                )}
+             </div>
 
-             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2">
+             {/* List Content */}
+             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 -mr-2 pr-3 pb-safe">
                 {activeTheme === 'overview' ? (
-                         <div className="text-sm text-slate-400 dark:text-neutral-500 italic p-2">Référentiel administratif : limites & chefs-lieux (visualisation seule).</div>
+                     <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/10 text-center">
+                        <Globe className="mx-auto mb-2 text-blue-400" size={24} />
+                        <p className="text-xs text-blue-600 dark:text-blue-300 font-medium leading-relaxed">
+                            Mode Référentiel
+                            <br/>
+                            <span className="opacity-70 font-normal">Activez les calques ci-dessus pour visualiser les limites administratives.</span>
+                        </p>
+                     </div>
                 ) : (
-                    currentList.map(item => (
-                    <motion.button
-                        key={item}
-                        whileHover={{ x: 4 }}
-                        onClick={() => handleProductSelect(item)}
-                        className={`w-full group flex items-center justify-between p-3 rounded-xl text-left transition-all border ${
-                        selectedProduct === item 
-                        ? 'bg-cameroon-green text-white shadow-lg shadow-cameroon-green/20 border-transparent' 
-                        : 'bg-white dark:bg-neutral-900 border-slate-100 dark:border-white/5 text-slate-600 dark:text-neutral-300 hover:border-cameroon-green/30 dark:hover:border-cameroon-green/30 hover:shadow-md'
-                        }`}
-                    >
-                        <span className="text-[13px] font-medium">{item}</span>
-                        {selectedProduct === item && <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />}
-                    </motion.button>
-                    ))
+                    <div className="grid gap-2">
+                        {currentList.map((item, idx) => (
+                        <motion.button
+                            key={item}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.03 }}
+                            onClick={() => handleProductSelect(item)}
+                            className={`w-full group flex items-center justify-between p-3.5 rounded-xl text-left transition-all border relative overflow-hidden ${
+                            selectedProduct === item 
+                            ? 'bg-cameroon-green text-white shadow-lg shadow-cameroon-green/20 border-transparent' 
+                            : 'bg-white dark:bg-neutral-900 border-slate-100 dark:border-white/5 text-slate-700 dark:text-neutral-300 hover:border-cameroon-green/30 dark:hover:border-cameroon-green/30 hover:shadow-md'
+                            }`}
+                        >
+                            <span className="text-[13px] font-semibold relative z-10">{item}</span>
+                            {selectedProduct === item && (
+                                <motion.div layoutId="selectedDot" className="w-2 h-2 rounded-full bg-white shadow-sm relative z-10" />
+                            )}
+                            
+                            {/* Subtle background decoration for selected item */}
+                            {selectedProduct === item && (
+                                <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                     {activeTheme === 'agriculture' && <Wheat size={64} />}
+                                     {activeTheme === 'elevage' && <Beef size={64} />}
+                                     {activeTheme === 'peche' && <Fish size={64} />}
+                                </div>
+                            )}
+                        </motion.button>
+                        ))}
+                        
+                        {currentList.length === 0 && (
+                            <div className="text-center py-8 text-slate-400 dark:text-neutral-600 text-xs">
+                                Aucun résultat trouvé
+                            </div>
+                        )}
+                    </div>
                 )}
              </div>
           </div>
@@ -544,7 +583,7 @@ export const Geoportal = () => {
                     
                     {/* Basemap Switcher */}
                     <div 
-                        className="absolute bottom-20 left-2 md:bottom-8 md:left-32 z-[1000]"
+                        className="absolute bottom-20 left-2 md:bottom-8 md:left-4 z-[1000]"
                         onClick={() => setShowBasemapSelector(!showBasemapSelector)}
                         onMouseEnter={() => window.innerWidth > 768 && setShowBasemapSelector(true)}
                         onMouseLeave={() => window.innerWidth > 768 && setShowBasemapSelector(false)}

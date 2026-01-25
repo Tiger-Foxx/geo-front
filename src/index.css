@@ -125,3 +125,108 @@
     rgba(255, 255, 255, 0.02) 8px
   );
 }
+
+/* ========================================
+   ELEGANT LOADING STATES
+   ======================================== */
+
+/* Shimmer effect for skeleton loaders */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* Pulse dot loader */
+@keyframes pulse-dot {
+  0%, 80%, 100% { 
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.loader-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.loader-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.loader-dots span:nth-child(1) { animation-delay: 0s; }
+.loader-dots span:nth-child(2) { animation-delay: 0.16s; }
+.loader-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+/* Breathing line loader */
+@keyframes breathe-line {
+  0%, 100% { 
+    width: 20%;
+    opacity: 0.3;
+  }
+  50% { 
+    width: 80%;
+    opacity: 1;
+  }
+}
+
+.loader-line {
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cameroon-green), var(--color-cameroon-yellow));
+  border-radius: 9999px;
+  animation: breathe-line 2s ease-in-out infinite;
+}
+
+/* Spinner - Ultra minimal */
+@keyframes spin-gentle {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loader-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top-color: var(--color-cameroon-green);
+  border-radius: 50%;
+  animation: spin-gentle 0.8s linear infinite;
+}
+
+/* Fade pulse for text */
+@keyframes text-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.loader-text {
+  animation: text-pulse 2s ease-in-out infinite;
+}
