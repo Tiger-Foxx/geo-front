@@ -48,7 +48,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
   }, [isDark]);
 
   const mainNav = [
-    { id: 'overview', icon: LayoutGrid, label: 'Vue Globale', type: 'theme' },
+    { id: 'overview', icon: LayoutGrid, label: 'Référentiel admin.', type: 'theme' },
     { id: 'agriculture', icon: Wheat, label: 'Agriculture', type: 'theme' },
     { id: 'elevage', icon: Beef, label: 'Élevage', type: 'theme' },
     { id: 'peche', icon: Fish, label: 'Pêche', type: 'theme' },
@@ -204,7 +204,7 @@ export const Sidebar = ({ view, onViewChange, activeTheme, onThemeChange, active
                       {activeTheme === 'overview' && <LayoutGrid size={18} />}
                    </div>
                    <h2 className="font-bold text-slate-900 dark:text-white capitalize tracking-tight">
-                      {activeTheme === 'overview' ? 'Vue Globale' : activeTheme}
+                     {activeTheme === 'overview' ? 'Référentiel admin.' : activeTheme}
                    </h2>
                 </div>
                 <button 

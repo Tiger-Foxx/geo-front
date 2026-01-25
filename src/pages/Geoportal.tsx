@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo, useRef } from 'react'; // Added useRef
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { MapTools } from '../components/map/MapTools';
 import { TabularView } from './TabularView';
-import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2 } from 'lucide-react';
-import { CROPS, LIVESTOCK, FISHERIES, FISH_INFRASTRUCTURE, generateMockData } from '../data/mockData';
+import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2 } from 'lucide-react';
+import { CROPS, LIVESTOCK_FILIERES, FISHERIES, PECHE_INFRA_TYPES, AGRI_INDICATORS, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence } from 'framer-motion';
-import L from 'leaflet'; // Need L types
+import L from 'leaflet';
 
 export const Geoportal = () => {
     // State: View & Theme
@@ -15,15 +15,21 @@ export const Geoportal = () => {
     const [sidebarPanelOpen, setSidebarPanelOpen] = useState(false);
   
     // State: Data & Layer Selection
-    const [aggregationLevel, setAggregationLevel] = useState<'national' | 'region' | 'department'>('region');
     const [selectedProduct, setSelectedProduct] = useState<string | null>(CROPS[0]);
+    const [selectedIndicator, setSelectedIndicator] = useState<string>('Production');
+    const [analysisLevel, setAnalysisLevel] = useState<'region' | 'department'>('department');
     const [years, setYears] = useState<number[]>([2022]);
     const [isPlaying, setIsPlaying] = useState(false);
     const [showLayerConfig, setShowLayerConfig] = useState(true); 
     const [productSearchTerm, setProductSearchTerm] = useState('');
     
-    // Layer visibility toggles (for admin boundaries display only)
-    const [visibleLayers, setVisibleLayers] = useState<{region: boolean; department: boolean; commune: boolean}>({ region: true, department: false, commune: false });
+    // Layer visibility toggles - Ces couches sont RÉFÉRENTIELLES (pas d'analyse thématique)
+    const [visibleLayers, setVisibleLayers] = useState<{region: boolean; department: boolean; arrondissement: boolean; chefsLieux: boolean}>({ 
+      region: true, 
+      department: false, 
+      arrondissement: false,
+      chefsLieux: false 
+    });
 
     // Map Ref
     const mapRef = useRef<L.Map | null>(null);
@@ -31,16 +37,55 @@ export const Geoportal = () => {
     // Dynamic Configuration based on Theme
     const sectorConfig = useMemo(() => {
         switch (activeTheme) {
-            case 'agriculture': return { products: CROPS, minYear: 1998, maxYear: 2022, defaultYear: 2022 };
-            case 'elevage': return { products: LIVESTOCK, minYear: 2015, maxYear: 2021, defaultYear: 2021 };
-            case 'peche': return { products: [...FISHERIES, ...FISH_INFRASTRUCTURE], minYear: 2015, maxYear: 2021, defaultYear: 2021 };
-            default: return { products: CROPS, minYear: 2000, maxYear: 2022, defaultYear: 2022 };
+                        case 'agriculture': 
+              return { 
+                products: CROPS, 
+                indicators: AGRI_INDICATORS,
+                minYear: 1998, 
+                maxYear: 2022, 
+                defaultYear: 2022,
+                granularity: 'departementale' as const
+              };
+            case 'elevage': 
+              return { 
+                products: LIVESTOCK_FILIERES, 
+                indicators: ['Effectif'],
+                minYear: 2020, // Régional seulement 2020-2021
+                maxYear: 2021, 
+                defaultYear: 2021,
+                granularity: 'regionale' as const
+              };
+            case 'peche': 
+              return { 
+                products: [...FISHERIES], 
+                indicators: ['Production', ...PECHE_INFRA_TYPES],
+                minYear: 2021, // Uniquement 2021
+                maxYear: 2021, 
+                defaultYear: 2021,
+                granularity: 'multiscalaire' as const
+              };
+            default: 
+              return { 
+                products: CROPS, 
+                indicators: ['Production'],
+                minYear: 2000, 
+                maxYear: 2022, 
+                defaultYear: 2022,
+                granularity: 'departementale' as const
+              };
         }
     }, [activeTheme]);
 
+        const thematicLevels = useMemo<Array<'region' | 'department'>>(() => {
+            if (activeTheme === 'agriculture') return ['department', 'region'];
+            if (activeTheme === 'elevage') return ['region'];
+            if (activeTheme === 'peche') return ['department', 'region'];
+            return [];
+        }, [activeTheme]);
+
     // Derived State for Products List
     const currentList = useMemo(() => {
-        return sectorConfig.products
+        return [...sectorConfig.products]
             .filter(item => item.toLowerCase().includes(productSearchTerm.toLowerCase()))
             .sort((a,b) => a.localeCompare(b));
     }, [sectorConfig, productSearchTerm]);
@@ -50,11 +95,13 @@ export const Geoportal = () => {
       setActiveTheme(newTheme);
       setProductSearchTerm('');
       
-      const newConfig = newTheme === 'agriculture' ? { products: CROPS, defaultYear: 2022 } 
-                      : newTheme === 'elevage' ? { products: LIVESTOCK, defaultYear: 2021 }
-                      : { products: FISHERIES, defaultYear: 2021 };
+    const newConfig = newTheme === 'agriculture' ? { products: CROPS, defaultYear: 2022, indicator: 'Production', level: 'department' as const } 
+                : newTheme === 'elevage' ? { products: LIVESTOCK_FILIERES, defaultYear: 2021, indicator: 'Effectif', level: 'region' as const }
+                : { products: FISHERIES, defaultYear: 2021, indicator: 'Production', level: 'department' as const };
                       
       setSelectedProduct(newConfig.products[0]);
+      setSelectedIndicator(newConfig.indicator);
+            setAnalysisLevel(newConfig.level);
       setYears([newConfig.defaultYear]);
     };
     
@@ -96,13 +143,35 @@ export const Geoportal = () => {
     
     // Data Memoization
     const data = useMemo(() => generateMockData(), []);
+
+        // Clamp analysis level based on data availability
+        useEffect(() => {
+            if (activeTheme === 'elevage') {
+                if (analysisLevel !== 'region') setAnalysisLevel('region');
+                return;
+            }
+
+            if (activeTheme === 'peche') {
+                const isInfra = PECHE_INFRA_TYPES.includes(selectedIndicator as any);
+                if (isInfra && analysisLevel !== 'region') {
+                    setAnalysisLevel('region');
+                }
+                return;
+            }
+
+            if (activeTheme === 'agriculture') {
+                if (!['department', 'region'].includes(analysisLevel)) {
+                    setAnalysisLevel('department');
+                }
+            }
+        }, [activeTheme, selectedIndicator, analysisLevel]);
   
     // ACTIONS
     const handleProductSelect = (p: string) => {
         setSelectedProduct(p);
     };
 
-    const toggleLayerVisibility = (layer: 'region' | 'department' | 'commune') => {
+    const toggleLayerVisibility = (layer: 'region' | 'department' | 'arrondissement' | 'chefsLieux') => {
         setVisibleLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
     };
 
@@ -175,13 +244,14 @@ export const Geoportal = () => {
       >
         <div className="p-5 flex flex-col gap-8 h-full">
                 
-          {/* Layer Visibility Toggles */}
+          {/* Layer Visibility Toggles - ONLY IN REFERENTIAL MODE */}
+          {activeTheme === 'overview' && (
           <div className="space-y-3">
              <div 
                onClick={() => setShowLayerConfig(!showLayerConfig)}
                className="flex items-center justify-between cursor-pointer group"
              >
-                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em] group-hover:text-cameroon-green transition-colors">Couches Limites</h3>
+                <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em] group-hover:text-cameroon-green transition-colors">Limites Admin.</h3>
                 <ChevronRight size={14} className={`text-slate-300 dark:text-neutral-600 transition-transform ${showLayerConfig ? 'rotate-90' : ''}`} />
              </div>
              
@@ -193,11 +263,13 @@ export const Geoportal = () => {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                     >
+                        <p className="text-[10px] text-slate-400 dark:text-neutral-600 mb-2 px-1">Couches de visualisation uniquement</p>
                         <div className="flex flex-col gap-1.5 p-1">
                             {[
-                                { id: 'region', label: 'Régions', icon: Globe },
-                                { id: 'department', label: 'Départements', icon: MapIcon },
-                                { id: 'commune', label: 'Arrondissements', icon: Layers }
+                                { id: 'region', label: 'Régions (10)', icon: Globe },
+                                { id: 'department', label: 'Départements (58)', icon: MapIcon },
+                                { id: 'arrondissement', label: 'Arrondissements', icon: Layers },
+                                { id: 'chefsLieux', label: 'Chefs-lieux', icon: MapIcon }
                             ].map((level) => (
                                 <div
                                     key={level.id}
@@ -220,35 +292,70 @@ export const Geoportal = () => {
                 )}
              </AnimatePresence>
           </div>
+          )}
 
           {/* Product/Variable Selection */}
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col pt-2 border-t border-slate-50 dark:border-white/5">
              <div className="flex flex-col gap-2 px-1">
                 <h3 className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-[0.2em]">
-                    {activeTheme === 'overview' ? 'Indicateurs' : 'Filières'}
+                    {activeTheme === 'overview' ? 'Indicateurs' : activeTheme === 'elevage' ? 'Filières' : 'Cultures'}
                 </h3>
-                {/* Aggregation Level Selector */}
-                {activeTheme !== 'overview' && (
+                
+                {/* Indicator Selector (for Agriculture) */}
+                {activeTheme === 'agriculture' && (
                     <div className="flex gap-1 p-0.5 bg-slate-100 dark:bg-neutral-900 rounded-lg">
-                        {[
-                            { id: 'national', label: 'Nat.' },
-                            { id: 'region', label: 'Rég.' },
-                            { id: 'department', label: 'Dép.' }
-                        ].map(level => (
+                        {sectorConfig.indicators.map(ind => (
                             <button
-                                key={level.id}
-                                onClick={() => setAggregationLevel(level.id as any)}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${
-                                    aggregationLevel === level.id
+                                key={ind}
+                                onClick={() => setSelectedIndicator(ind)}
+                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1 ${
+                                    selectedIndicator === ind
                                         ? 'bg-white dark:bg-neutral-800 text-cameroon-green shadow-sm'
                                         : 'text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300'
                                 }`}
                             >
-                                {level.label}
+                                {ind === 'Production' && <BarChart2 size={10} />}
+                                {ind === 'Area Planted' && <Layers size={10} />}
+                                {ind === 'Yield' && <TrendingUp size={10} />}
+                                {ind === 'Production' ? 'Prod.' : ind === 'Area Planted' ? 'Surf.' : 'Rend.'}
                             </button>
                         ))}
                     </div>
                 )}
+
+                {/* Thematic Analysis Level (independent from admin layers) */}
+                {activeTheme !== 'overview' && thematicLevels.length > 0 && (
+                    <div className="flex gap-1 p-0.5 bg-white dark:bg-neutral-900 rounded-lg border border-slate-100 dark:border-white/10">
+                        {(['region', 'department'] as const).map(level => {
+                            const isAvailable = thematicLevels.includes(level);
+                            return (
+                                <button
+                                    key={level}
+                                    onClick={() => isAvailable && setAnalysisLevel(level)}
+                                    className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all ${
+                                        analysisLevel === level
+                                            ? 'bg-cameroon-green text-white shadow-sm'
+                                            : isAvailable
+                                              ? 'text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300'
+                                              : 'text-slate-300 dark:text-neutral-700 cursor-not-allowed'
+                                    }`}
+                                >
+                                    {level === 'region' ? 'Régions' : 'Départ.'}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+                
+                {/* Info: Data Granularity */}
+                <div className="px-2 py-1.5 bg-slate-50 dark:bg-neutral-900 rounded-lg border border-slate-100 dark:border-white/5">
+                  <span className="text-[9px] font-medium text-slate-500 dark:text-neutral-500">
+                    Granularité : <span className="text-cameroon-green font-bold">{sectorConfig.granularity}</span>
+                    {activeTheme === 'agriculture' && ' • 1998-2022'}
+                    {activeTheme === 'elevage' && ' • 2020-2021'}
+                    {activeTheme === 'peche' && ' • 2021 uniquement'}
+                  </span>
+                </div>
              </div>
              
              {/* Search Bar */}
@@ -272,7 +379,7 @@ export const Geoportal = () => {
 
              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2">
                 {activeTheme === 'overview' ? (
-                   <div className="text-sm text-slate-400 dark:text-neutral-500 italic p-2">Vue synthétique en cours de développement...</div>
+                         <div className="text-sm text-slate-400 dark:text-neutral-500 italic p-2">Référentiel administratif : limites & chefs-lieux (visualisation seule).</div>
                 ) : (
                     currentList.map(item => (
                     <motion.button
@@ -421,9 +528,9 @@ export const Geoportal = () => {
                         data={data}
                         year={years[0]} 
                         product={selectedProduct || ''}
-                        indicator={activeTheme === 'elevage' ? 'Effectif' : 'Production'}
+                        indicator={selectedIndicator}
                         basemap={basemap}
-                        adminLevel={aggregationLevel === 'national' ? 'region' : aggregationLevel}
+                        adminLevel={analysisLevel}
                     />
 
                     {/* NEW MAP TOOLS - FLOATING RIGHT */}
@@ -497,6 +604,7 @@ export const Geoportal = () => {
                         selectedProduct={selectedProduct || ''}
                         activeTheme={activeTheme}
                         years={years}
+                        selectedIndicator={selectedIndicator}
                     />
                 </div>
             )}

@@ -1,24 +1,38 @@
 import { useState, useMemo, useEffect } from 'react';
-import { REGIONS_DEPARTMENTS, generateMockData } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown } from 'lucide-react';
+import { REGIONS_DEPARTMENTS, generateMockData, AGRI_INDICATORS } from '../data/mockData';
+import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TabularViewProps {
   selectedProduct: string;
   activeTheme: 'agriculture' | 'elevage' | 'peche' | 'overview';
   years: number[];
+  selectedIndicator?: string;
 }
 
-export const TabularView = ({ selectedProduct, activeTheme: _activeTheme, years }: TabularViewProps) => {
+export const TabularView = ({ selectedProduct, activeTheme, years, selectedIndicator = 'Production' }: TabularViewProps) => {
   const [selectedRegion, setSelectedRegion] = useState('Centre');
   const [isRegionDropdownOpen, setIsRegionDropdownOpen] = useState(false);
   const [pivotMode, setPivotMode] = useState<'years-rows' | 'dept-rows'>('years-rows');
+  const [localIndicator, setLocalIndicator] = useState(selectedIndicator);
+  
+  // Sync local indicator with prop
+  useEffect(() => {
+    setLocalIndicator(selectedIndicator);
+  }, [selectedIndicator]);
   
   const data = useMemo(() => generateMockData(), []);
   const departments = REGIONS_DEPARTMENTS[selectedRegion] || [];
   
-  // Use years from props or fallback to a sensible range
-  const displayYears = years.length > 0 ? years : Array.from({ length: 6 }, (_, i) => 2017 + i);
+  // Determine year range based on theme
+  const defaultYears = useMemo(() => {
+    if (activeTheme === 'agriculture') return Array.from({ length: 6 }, (_, i) => 2022 - i);
+    if (activeTheme === 'elevage') return [2021, 2020];
+    if (activeTheme === 'peche') return [2021];
+    return Array.from({ length: 6 }, (_, i) => 2022 - i);
+  }, [activeTheme]);
+  
+  const displayYears = years.length > 0 ? years : defaultYears;
   
   const rows = pivotMode === 'years-rows' ? displayYears : departments;
   const cols = pivotMode === 'years-rows' ? departments : displayYears;
@@ -26,12 +40,13 @@ export const TabularView = ({ selectedProduct, activeTheme: _activeTheme, years 
 
   // Helper to get formatted value and fake trend
   const getCellData = (dept: string, year: number) => {
-    const record = data.find(d => d.department === dept && d.season_year === year && d.product === selectedProduct);
+    const record = data.find(d => d.department === dept && d.season_year === year && d.product === selectedProduct && d.indicator === localIndicator);
     const val = record?.value;
     const status = record?.status || 'unavailable';
+    const unit = record?.unit || 'tonnes';
     
-    // Fake trend logic for demo (only if current val exists and is not 0)
-    const prevRecord = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct);
+    // Trend logic (compare with previous year)
+    const prevRecord = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct && d.indicator === localIndicator);
     const prevYearVal = prevRecord?.value;
     
     let trend: 'up' | 'down' | 'stable' = 'stable';
@@ -42,7 +57,7 @@ export const TabularView = ({ selectedProduct, activeTheme: _activeTheme, years 
         percent = ((val - prevYearVal) / prevYearVal) * 100;
     }
     
-    return { val, status, trend, percent };
+    return { val, status, trend, percent, unit };
   };
 
   // Click outside to close dropdown
@@ -91,6 +106,26 @@ export const TabularView = ({ selectedProduct, activeTheme: _activeTheme, years 
                     Par Départements
                 </button>
              </div>
+
+             <div className="h-8 w-px bg-slate-100 dark:bg-white/10 hidden md:block" />
+
+             {/* Indicator Selector (Agriculture only) */}
+             {activeTheme === 'agriculture' && (
+               <div className="flex p-0.5 rounded-lg border border-slate-200 dark:border-white/10">
+                  {AGRI_INDICATORS.map(ind => (
+                      <button 
+                          key={ind}
+                          onClick={() => setLocalIndicator(ind)}
+                          className={`px-3 py-1.5 text-[10px] font-semibold rounded-md transition-colors flex items-center gap-1 ${localIndicator === ind ? 'bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-neutral-500 dark:hover:text-neutral-300'}`}
+                      >
+                          {ind === 'Production' && <BarChart3 size={10} />}
+                          {ind === 'Area Planted' && <Layers size={10} />}
+                          {ind === 'Yield' && <TrendingUp size={10} />}
+                          {ind === 'Production' ? 'Prod.' : ind === 'Area Planted' ? 'Surf.' : 'Rend.'}
+                      </button>
+                  ))}
+               </div>
+             )}
 
              <div className="h-8 w-px bg-slate-100 dark:bg-white/10 hidden md:block" />
 
