@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun, Menu, X, Command } from 'lucide-react';
+import { LayoutGrid, Map, Table, Settings, ChevronLeft, Wheat, Beef, Fish, Moon, Sun, Menu, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -34,7 +34,6 @@ export const Sidebar = ({
     return saved === 'dark';
   });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
@@ -150,8 +149,8 @@ export const Sidebar = ({
                         }
                    }}
                    isPanelOpen={activePanel}
-                   onVerify={() => setHoveredNav(item.id)}
-                   onLeave={() => setHoveredNav(null)}
+                   onVerify={() => {}}
+                   onLeave={() => {}}
                 />
              ))}
           </div>
@@ -165,14 +164,12 @@ export const Sidebar = ({
                 icon={isDark ? Sun : Moon}
                 onClick={toggleTheme}
                 label={isDark ? 'Mode Clair' : 'Mode Sombre'}
-                variant="utility"
              />
              <ViewButton 
                  active={false}
                  icon={Settings}
                  onClick={onSettingsClick || (() => {})}
                  label="Paramètres"
-                 variant="utility"
              />
           </div>
         </motion.div>
@@ -241,7 +238,7 @@ export const Sidebar = ({
 
 // --- SUB-COMPONENTS FOR CLEANER CODE ---
 
-const ViewButton = ({ active, icon: Icon, onClick, label, variant = 'primary' }: any) => (
+const ViewButton = ({ active, icon: Icon, onClick, label }: any) => (
   <div className="relative group w-full flex justify-center">
       <button 
         onClick={onClick}

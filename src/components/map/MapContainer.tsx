@@ -27,6 +27,7 @@ interface MapContainerProps {
   indicator: string;
   basemap?: BasemapType;
   adminLevel?: 'region' | 'department' | 'commune';
+  flyToLocation?: { lat: number; lng: number; label: string } | null;
   onFeatureClick?: (feature: any) => void;
   onMapReady?: (map: L.Map) => void;
 }
@@ -81,11 +82,29 @@ const getColorScale = (value: number | null, min: number, max: number, isDark: b
 };
 
 // Component to handle map updates
-const MapUpdater = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
+const MapUpdater = ({ center, zoom, flyToLocation }: { center: [number, number]; zoom: number; flyToLocation?: { lat: number, lng: number, label: string } | null }) => {
   const map = useMap();
+  
   useEffect(() => {
     map.flyTo(center, zoom, { duration: 0.8, easeLinearity: 0.5 });
   }, [center, zoom, map]);
+
+  useEffect(() => {
+    if (flyToLocation) {
+      map.flyTo([flyToLocation.lat, flyToLocation.lng], 12, { duration: 1.5 });
+      L.popup({
+        className: 'glass-popup',
+        closeButton: true,
+        autoClose: true,
+        closeOnClick: true,
+        offset: [0, -10]
+      })
+      .setLatLng([flyToLocation.lat, flyToLocation.lng])
+      .setContent(`<div class="font-bold text-sm text-center px-1">${flyToLocation.label}</div>`)
+      .openOn(map);
+    }
+  }, [flyToLocation, map]);
+
   return null;
 };
 
@@ -163,7 +182,7 @@ const MouseTracker = ({ onMouseMove }: { onMouseMove: (pos: { x: number; y: numb
   return null;
 };
 
-export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', adminLevel = 'region', onFeatureClick, onMapReady }: MapContainerProps) => {
+export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', adminLevel = 'region', flyToLocation, onFeatureClick, onMapReady }: MapContainerProps) => {
   const center: [number, number] = [7.3697, 12.3547];
   const zoom = 6;
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
@@ -308,7 +327,7 @@ export const MapContainer = ({ data, year, product, indicator, basemap = 'osm', 
           className="h-full w-full z-0" 
           style={{ background: isDark ? '#0a0a0a' : '#f8fafc' }}
         >
-          <MapUpdater center={center} zoom={zoom} />
+          <MapUpdater center={center} zoom={zoom} flyToLocation={flyToLocation} />
           <MapInstanceCapture />
           <MouseTracker onMouseMove={setMousePos} />
           

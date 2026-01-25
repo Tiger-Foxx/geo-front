@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { REGIONS_DEPARTMENTS, generateMockData, AGRI_INDICATORS } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check } from 'lucide-react';
+import { REGIONS_DEPARTMENTS, REGIONS, generateMockData, AGRI_INDICATORS, MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
+import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TabularViewProps {
@@ -10,7 +10,462 @@ interface TabularViewProps {
   selectedIndicator?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PÊCHE SUB-COMPONENT - Specialized view for fishing data (multiscalar)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Based on REAL data structure from Description_datas_brutes_dispo.md:
+// - National: évolution 2015-2021 (prod par type)
+// - Régional: données COMPLÈTES par région (prod par type + infrastructures) - données 2021 uniquement pour l'instant
+// - Départemental: production totale par département - données 2021 uniquement
+
+type PecheDataDimension = 'production' | 'infrastructure';
+
+const PECHE_LABELS: Record<string, string> = {
+  // Production
+  'peche_artisanale_maritime': 'Pêche Artisanale Maritime',
+  'peche_continentale': 'Pêche Continentale', 
+  'peche_industrielle': 'Pêche Industrielle',
+  'aquaculture': 'Aquaculture',
+  'production_totale': 'Production Totale',
+  // Infra
+  'nb_pisciculteurs': 'Pisciculteurs',
+  'etangs_actifs': 'Étangs Actifs',
+  'fumoirs': 'Fumoirs',
+  'halls_vente': 'Halls de Vente',
+  'bacs': 'Bacs',
+  'cages': 'Cages',
+  // Legacy (mock)
+  'prod_industrielle': 'Industrielle',
+  'prod_continentale': 'Continentale', 
+  'prod_artisanale': 'Artisanale',
+  'prod_totale': 'Total',
+  'etangs': 'Étangs',
+};
+
+const PECHE_ICONS: Record<string, typeof Fish> = {
+  'peche_artisanale_maritime': Anchor,
+  'peche_continentale': Waves,
+  'peche_industrielle': Factory,
+  'aquaculture': Fish,
+  'production_totale': BarChart3,
+  'nb_pisciculteurs': Users,
+  'etangs_actifs': Waves,
+  'fumoirs': Building2,
+  'halls_vente': Warehouse,
+  'bacs': Layers,
+  'cages': Fish,
+  // Legacy
+  'prod_industrielle': Factory,
+  'prod_continentale': Waves,
+  'prod_artisanale': Anchor,
+  'prod_totale': BarChart3,
+  'etangs': Waves,
+};
+
+const PecheTabularView = () => {
+  // Available years for national data (from mock - 2015-2021)
+  const availableYears = useMemo(() => MOCK_DB.peche.national.map(d => d.annee).sort((a, b) => b - a), []);
+  
+  const [selectedYear, setSelectedYear] = useState<number>(availableYears[0] || 2021);
+  const [dimension, setDimension] = useState<PecheDataDimension>('production');
+  const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  useEffect(() => {
+    setIsLoading(true);
+    const timer = setTimeout(() => setIsLoading(false), 200);
+    return () => clearTimeout(timer);
+  }, [selectedYear, dimension]);
+
+  // Data from mock DB
+  const nationalData = MOCK_DB.peche.national;
+  const regionalData = MOCK_DB.peche.regional;
+  const departementalData = MOCK_DB.peche.departemental;
+  
+  // Get national data for selected year
+  const nationalYearData = useMemo(() => 
+    nationalData.find(d => d.annee === selectedYear), 
+    [nationalData, selectedYear]
+  );
+  
+  // Get previous year data for trend calculation
+  const prevYearData = useMemo(() => 
+    nationalData.find(d => d.annee === selectedYear - 1),
+    [nationalData, selectedYear]
+  );
+
+  return (
+    <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
+      <div className="w-full h-full flex flex-col space-y-0 max-w-[1600px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
+        
+        {/* Loading Overlay */}
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-[2px]"
+            >
+              <div className="flex flex-col items-center gap-3">
+                <div className="loader-dots text-blue-500"><span></span><span></span><span></span></div>
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">Chargement</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Header */}
+        <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 p-6 border-b border-slate-100 dark:border-white/5 bg-white dark:bg-[#050505] shrink-0">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
+                <Fish size={16} strokeWidth={2.5} />
+              </div>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Données Pêche & Aquaculture</h1>
+            </div>
+            <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">
+              Exploration multidimensionnelle : Production par type & Infrastructures
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-4 items-center">
+            
+            {/* Year Selector */}
+            <div className="relative z-50">
+              <button
+                onClick={() => setIsYearDropdownOpen(!isYearDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-neutral-900 rounded-xl text-sm font-bold text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <Calendar size={14} className="text-blue-500" />
+                <span>{selectedYear}</span>
+                <ChevronDown size={14} className={`transition-transform ${isYearDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {isYearDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute top-full mt-1 left-0 bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50"
+                  >
+                    {availableYears.map(year => (
+                      <button
+                        key={year}
+                        onClick={() => {
+                          setSelectedYear(year);
+                          setIsYearDropdownOpen(false);
+                        }}
+                        className={`w-full px-4 py-2 text-sm font-medium text-left transition-colors ${
+                          selectedYear === year 
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                            : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
+
+            {/* Dimension Toggle: Production vs Infrastructure */}
+            <div className="flex p-1 rounded-xl bg-slate-100 dark:bg-neutral-900 gap-1">
+              <button
+                onClick={() => setDimension('production')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  dimension === 'production'
+                    ? 'bg-white dark:bg-neutral-800 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-500 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-300'
+                }`}
+              >
+                <BarChart3 size={14} />
+                <span>Production</span>
+              </button>
+              <button
+                onClick={() => setDimension('infrastructure')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  dimension === 'infrastructure'
+                    ? 'bg-white dark:bg-neutral-800 text-teal-600 dark:text-teal-400 shadow-sm'
+                    : 'text-slate-500 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-300'
+                }`}
+              >
+                <Building2 size={14} />
+                <span>Infrastructures</span>
+              </button>
+            </div>
+            
+            <button className="ml-auto p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
+              <Download size={18} strokeWidth={2} />
+            </button>
+          </div>
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-hidden bg-white dark:bg-[#050505] relative flex flex-col">
+          <div className="absolute inset-0 overflow-auto custom-scrollbar p-6">
+            
+            {/* ═══════════════════════════════════════════════════════════════════════════ */}
+            {/* PRODUCTION DIMENSION */}
+            {/* ═══════════════════════════════════════════════════════════════════════════ */}
+            {dimension === 'production' && (
+              <div className="space-y-8">
+                
+                {/* Section 1: National Summary for Selected Year */}
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <Globe size={18} className="text-blue-500" />
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Résumé National {selectedYear}</h2>
+                  </div>
+                  
+                  {nationalYearData ? (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => {
+                        const Icon = PECHE_ICONS[key] || BarChart3;
+                        const val = nationalYearData[key];
+                        const prevVal = prevYearData?.[key];
+                        const trend = prevVal ? ((val - prevVal) / prevVal * 100) : null;
+                        
+                        return (
+                          <div key={key} className={`p-4 rounded-xl border ${
+                            key === 'prod_totale' 
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50' 
+                              : 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-white/10'
+                          }`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Icon size={14} className={key === 'prod_totale' ? 'text-blue-600' : 'text-slate-400'} />
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
+                                {PECHE_LABELS[key]}
+                              </span>
+                            </div>
+                            <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+                              {val.toLocaleString('fr-FR')}
+                              <span className="text-xs font-normal text-slate-400 ml-1">t</span>
+                            </div>
+                            {trend !== null && (
+                              <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${
+                                trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-rose-600' : 'text-slate-400'
+                              }`}>
+                                {trend > 0 ? <ArrowUpRight size={12} /> : trend < 0 ? <ArrowDownRight size={12} /> : null}
+                                {trend > 0 ? '+' : ''}{trend.toFixed(1)}% vs {selectedYear - 1}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 dark:text-neutral-600">
+                      Pas de données nationales pour {selectedYear}
+                    </div>
+                  )}
+                </section>
+
+                {/* Section 2: Historical Trend Table */}
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <TrendingUp size={18} className="text-blue-500" />
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Évolution Historique</h2>
+                    <span className="text-xs text-slate-400">2015 → 2021</span>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                      <thead className="bg-slate-50 dark:bg-neutral-900">
+                        <tr>
+                          <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10">Année</th>
+                          {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => (
+                            <th key={key} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-right border-b border-slate-200 dark:border-white/10">
+                              {PECHE_LABELS[key]}
+                            </th>
+                          ))}
+                          <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10">Croiss.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                        {[...nationalData].sort((a, b) => b.annee - a.annee).map(row => (
+                          <tr 
+                            key={row.annee} 
+                            className={`transition-colors ${
+                              row.annee === selectedYear 
+                                ? 'bg-blue-50 dark:bg-blue-900/20' 
+                                : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'
+                            }`}
+                          >
+                            <td className={`p-3 font-bold text-sm ${row.annee === selectedYear ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
+                              {row.annee}
+                            </td>
+                            {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => (
+                              <td key={key} className="p-3 text-right text-sm tabular-nums text-slate-700 dark:text-neutral-300">
+                                {row[key].toLocaleString('fr-FR')}
+                              </td>
+                            ))}
+                            <td className="p-3 text-center">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${
+                                row.taux_croissance > 0 
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                  : row.taux_croissance < 0 
+                                    ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
+                                    : 'bg-slate-100 dark:bg-neutral-800 text-slate-500'
+                              }`}>
+                                {row.taux_croissance > 0 ? '+' : ''}{row.taux_croissance.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {/* Section 3: Départemental Production (2021 only based on available data) */}
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <Layers size={18} className="text-purple-500" />
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Production par Département</h2>
+                    <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded">
+                      Données 2021 uniquement
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {REGIONS.map(region => {
+                      const deptData = departementalData.filter(d => d.region === region).sort((a, b) => b.valeur - a.valeur);
+                      const regionTotal = deptData.reduce((sum, d) => sum + d.valeur, 0);
+                      const isCoastal = ['Littoral', 'Sud', 'Sud-Ouest'].includes(region);
+                      const maxVal = Math.max(...deptData.map(d => d.valeur), 1);
+                      
+                      if (regionTotal === 0) return null;
+                      
+                      return (
+                        <div key={region} className="border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden">
+                          <div className={`p-3 flex items-center justify-between ${
+                            isCoastal ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-slate-50 dark:bg-neutral-900'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">{region}</span>
+                              {isCoastal && <Anchor size={12} className="text-blue-500" />}
+                            </div>
+                            <span className="text-sm font-bold text-purple-600 dark:text-purple-400 tabular-nums">
+                              {regionTotal.toLocaleString('fr-FR')} t
+                            </span>
+                          </div>
+                          <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[200px] overflow-y-auto custom-scrollbar">
+                            {deptData.map(dept => (
+                              <div key={dept.departement} className="p-2 px-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] relative">
+                                <div 
+                                  className="absolute left-0 top-0 bottom-0 bg-purple-100/50 dark:bg-purple-900/20"
+                                  style={{ width: `${(dept.valeur / maxVal) * 100}%` }}
+                                />
+                                <span className="relative z-10 flex-1 text-xs text-slate-600 dark:text-neutral-400">{dept.departement}</span>
+                                <span className="relative z-10 text-xs font-bold tabular-nums text-slate-900 dark:text-white">
+                                  {dept.valeur.toLocaleString('fr-FR')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════════════════ */}
+            {/* INFRASTRUCTURE DIMENSION */}
+            {/* ═══════════════════════════════════════════════════════════════════════════ */}
+            {dimension === 'infrastructure' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Building2 size={18} className="text-teal-500" />
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white">Infrastructures par Région</h2>
+                  <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded">
+                    Données 2021 uniquement
+                  </span>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead className="bg-slate-50 dark:bg-neutral-900">
+                      <tr>
+                        <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10 sticky left-0 bg-slate-50 dark:bg-neutral-900 z-10">Région</th>
+                        {PECHE_INFRA_TYPES.map(inf => {
+                          const Icon = PECHE_ICONS[inf] || Building2;
+                          return (
+                            <th key={inf} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10 min-w-[100px]">
+                              <div className="flex flex-col items-center gap-1">
+                                <Icon size={14} className="text-teal-400" />
+                                <span>{PECHE_LABELS[inf] || inf}</span>
+                              </div>
+                            </th>
+                          );
+                        })}
+                        <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                      {[...regionalData].sort((a, b) => {
+                        const totalA = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (a[k] || 0), 0);
+                        const totalB = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (b[k] || 0), 0);
+                        return totalB - totalA;
+                      }).map(row => {
+                        const total = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (row[k] || 0), 0);
+                        const isCoastal = ['Littoral', 'Sud', 'Sud-Ouest'].includes(row.region);
+                        
+                        return (
+                          <tr key={row.region} className="hover:bg-teal-50/50 dark:hover:bg-teal-900/10 transition-colors">
+                            <td className="p-4 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-white/10 text-sm sticky left-0 bg-white dark:bg-[#050505] z-10">
+                              <div className="flex items-center gap-2">
+                                {row.region}
+                                {isCoastal && <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[8px] font-bold uppercase rounded">Côtier</span>}
+                              </div>
+                            </td>
+                            {PECHE_INFRA_TYPES.map(inf => (
+                              <td key={inf} className="p-3 text-center">
+                                <span className={`text-sm font-semibold tabular-nums ${
+                                  row[inf] > 0 ? 'text-slate-800 dark:text-neutral-200' : 'text-slate-300 dark:text-neutral-700'
+                                }`}>
+                                  {row[inf]?.toLocaleString('fr-FR') || '—'}
+                                </span>
+                              </td>
+                            ))}
+                            <td className="p-3 text-center">
+                              <span className="inline-flex items-center justify-center min-w-[50px] px-2 py-1 rounded-lg bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-sm font-bold">
+                                {total.toLocaleString('fr-FR')}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN TABULAR VIEW COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const TabularView = ({ selectedProduct, activeTheme, selectedIndicator = 'Production' }: TabularViewProps) => {
+  // If theme is PECHE, render specialized view
+  if (activeTheme === 'peche') {
+    return <PecheTabularView />;
+  }
+  
+  // Otherwise, continue with Agriculture/Elevage view
   const [selectedRegion, setSelectedRegion] = useState('Centre');
   const [isRegionDropdownOpen, setIsRegionDropdownOpen] = useState(false);
   const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
@@ -21,7 +476,6 @@ export const TabularView = ({ selectedProduct, activeTheme, selectedIndicator = 
   const availableYears = useMemo(() => {
     if (activeTheme === 'agriculture') return Array.from({ length: 25 }, (_, i) => 2022 - i); // 1998-2022
     if (activeTheme === 'elevage') return [2021, 2020];
-    if (activeTheme === 'peche') return [2021];
     return Array.from({ length: 7 }, (_, i) => 2022 - i);
   }, [activeTheme]);
   

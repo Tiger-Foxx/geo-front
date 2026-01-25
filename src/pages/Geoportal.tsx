@@ -3,7 +3,7 @@ import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { MapTools } from '../components/map/MapTools';
 import { TabularView } from './TabularView';
-import { Search, Filter, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2, Wheat, Beef, Fish, Eye, EyeOff } from 'lucide-react';
+import { Search, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2, Wheat, Beef, Fish, Eye, EyeOff, MapPin, Loader2 } from 'lucide-react';
 import { CROPS, LIVESTOCK_FILIERES, FISHERIES, PECHE_INFRA_TYPES, AGRI_INDICATORS, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import L from 'leaflet';
@@ -22,7 +22,38 @@ export const Geoportal = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [showLayerConfig, setShowLayerConfig] = useState(true); 
     const [productSearchTerm, setProductSearchTerm] = useState('');
-    
+
+    // Place Search State
+    const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+    const [placeSearchResults, setPlaceSearchResults] = useState<any[]>([]);
+    const [isPlaceSearching, setIsPlaceSearching] = useState(false);
+    const [flyToLocation, setFlyToLocation] = useState<{lat: number, lng: number, label: string} | null>(null);
+
+    // Debounced Search Effect
+    useEffect(() => {
+        if (!placeSearchQuery || placeSearchQuery.length < 3) {
+            setPlaceSearchResults([]);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setIsPlaceSearching(true);
+            try {
+                // Nominatim Search (Cameroon restricted)
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${placeSearchQuery}&countrycodes=cm&limit=5&addressdetails=1`);
+                const data = await res.json();
+                setPlaceSearchResults(data);
+            } catch (e) {
+                console.error("Search error", e);
+            } finally {
+                setIsPlaceSearching(false);
+            }
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [placeSearchQuery]);
+
+
     // Layer visibility toggles - Ces couches sont RÉFÉRENTIELLES (pas d'analyse thématique)
     const [layers, setLayers] = useState([
       { id: 'region', label: 'Régions (10)', icon: Globe, visible: true },
@@ -263,24 +294,62 @@ export const Geoportal = () => {
                         className="overflow-hidden"
                     >
                         <Reorder.Group axis="y" values={layers} onReorder={setLayers} className="flex flex-col gap-2 pt-1">
-                            {layers.map((layer) => (
+                            {layers.map((layer) => {
+                                // Determine specific styling based on layer ID
+                                const getLayerColor = (id: string, visible: boolean) => {
+                                    if (!visible) return { 
+                                        border: 'border-slate-100 dark:border-white/5', 
+                                        bg: 'bg-white dark:bg-neutral-900', 
+                                        iconBg: 'bg-slate-50 dark:bg-neutral-800',
+                                        iconText: 'text-slate-400 dark:text-neutral-500', 
+                                        text: 'text-slate-400 dark:text-neutral-500' 
+                                    };
+                                    
+                                    switch(id) {
+                                        case 'region': return { 
+                                            border: 'border-blue-500/30', bg: 'bg-blue-50/30 dark:bg-blue-900/10', 
+                                            iconBg: 'bg-blue-100 dark:bg-blue-900/30', iconText: 'text-blue-600 dark:text-blue-400',
+                                            text: 'text-slate-700 dark:text-neutral-200'
+                                        };
+                                        case 'department': return { 
+                                            border: 'border-teal-500/30', bg: 'bg-teal-50/30 dark:bg-teal-900/10', 
+                                            iconBg: 'bg-teal-100 dark:bg-teal-900/30', iconText: 'text-teal-600 dark:text-teal-400',
+                                            text: 'text-slate-700 dark:text-neutral-200'
+                                        };
+                                        case 'arrondissement': return { 
+                                            border: 'border-purple-500/30', bg: 'bg-purple-50/30 dark:bg-purple-900/10', 
+                                            iconBg: 'bg-purple-100 dark:bg-purple-900/30', iconText: 'text-purple-600 dark:text-purple-400',
+                                            text: 'text-slate-700 dark:text-neutral-200'
+                                        };
+                                        case 'chefsLieux': return { 
+                                            border: 'border-amber-500/30', bg: 'bg-amber-50/30 dark:bg-amber-900/10', 
+                                            iconBg: 'bg-amber-100 dark:bg-amber-900/30', iconText: 'text-amber-600 dark:text-amber-400',
+                                            text: 'text-slate-700 dark:text-neutral-200'
+                                        };
+                                        default: return { 
+                                            border: 'border-cameroon-green/30', bg: 'bg-white dark:bg-neutral-900', 
+                                            iconBg: 'bg-slate-50 dark:bg-neutral-800', iconText: 'text-slate-500 dark:text-neutral-400',
+                                            text: 'text-slate-700 dark:text-neutral-200'
+                                        };
+                                    }
+                                };
+                                
+                                const style = getLayerColor(layer.id, layer.visible);
+                                
+                                return (
                                 <Reorder.Item key={layer.id} value={layer} className="relative">
                                     <div
-                                        className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all select-none bg-white dark:bg-neutral-900 ${
-                                            layer.visible 
-                                            ? 'border-cameroon-green/30 shadow-sm shadow-cameroon-green/5' 
-                                            : 'border-slate-100 dark:border-white/5 opacity-60'
-                                        }`}
+                                        className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all select-none ${style.bg} ${style.border} ${!layer.visible && 'opacity-60'}`}
                                     >
                                         <div className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-slate-300 dark:text-neutral-600 hover:text-slate-500 transition-colors">
                                            <GripVertical size={14} />
                                         </div>
                                         
-                                        <div className="flex items-center justify-center p-1.5 rounded-lg bg-slate-50 dark:bg-neutral-800 text-slate-500 dark:text-neutral-400">
+                                        <div className={`flex items-center justify-center p-1.5 rounded-lg ${style.iconBg} ${style.iconText}`}>
                                             <layer.icon size={14} />
                                         </div>
                                         
-                                        <span className={`flex-1 text-[12px] font-medium ${layer.visible ? 'text-slate-700 dark:text-neutral-200' : 'text-slate-400 dark:text-neutral-500'}`}>
+                                        <span className={`flex-1 text-[12px] font-medium ${style.text}`}>
                                             {layer.label}
                                         </span>
 
@@ -292,7 +361,7 @@ export const Geoportal = () => {
                                             }}
                                             className={`p-1.5 rounded-lg transition-colors ${
                                                 layer.visible 
-                                                ? 'text-cameroon-green bg-cameroon-green/10 hover:bg-cameroon-green/20' 
+                                                ? `${style.iconText.replace('text-', 'bg-').replace('600', '100').replace('400', '900/20')} hover:brightness-95` 
                                                 : 'text-slate-400 hover:text-slate-600 dark:text-neutral-600 dark:hover:text-neutral-400'
                                             }`}
                                         >
@@ -300,7 +369,8 @@ export const Geoportal = () => {
                                         </button>
                                     </div>
                                 </Reorder.Item>
-                            ))}
+                                );
+                            })}
                         </Reorder.Group>
                     </motion.div>
                 )}
@@ -453,19 +523,35 @@ export const Geoportal = () => {
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -20, opacity: 0 }}
-                    className="w-full h-10 md:h-12 glass rounded-full flex items-center px-2 pointer-events-auto border border-white/60 dark:border-white/10 shadow-xl ring-1 ring-black/5"
+                    className="w-full h-10 md:h-12 glass rounded-2xl flex items-center px-2 pointer-events-auto border border-white/60 dark:border-white/10 shadow-xl ring-1 ring-black/5 relative z-20"
                 >
                     <div className="w-8 md:w-10 h-full flex items-center justify-center flex-shrink-0">
-                    <Search size={16} className="md:w-[18px] md:h-[18px] text-slate-400 dark:text-neutral-500" />
+                        {isPlaceSearching ? (
+                            <Loader2 size={16} className="animate-spin text-cameroon-green" />
+                        ) : (
+                            <Search size={16} className="md:w-[18px] md:h-[18px] text-slate-400 dark:text-neutral-500" />
+                        )}
                     </div>
                     <input 
                         type="text" 
-                        placeholder="Chercher..." 
+                        value={placeSearchQuery}
+                        onChange={(e) => setPlaceSearchQuery(e.target.value)}
+                        placeholder="Rechercher un lieu, une région, une ville..." 
                         className="flex-1 bg-transparent border-none focus:ring-0 text-xs md:text-[13px] font-medium outline-none placeholder:text-slate-400 dark:placeholder:text-neutral-500 h-full text-slate-700 dark:text-neutral-200"
                     />
-                    <button className="p-1.5 md:p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-full transition-colors relative hidden sm:block">
-                        <Filter size={14} className="md:w-[16px] md:h-[16px] text-slate-500 dark:text-neutral-400" />
-                    </button>
+                    
+                    {placeSearchQuery && (
+                        <button 
+                            onClick={() => {
+                                setPlaceSearchQuery('');
+                                setPlaceSearchResults([]);
+                            }}
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-full text-slate-400 mr-2"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+
                     <div className="w-px h-4 md:h-6 bg-slate-200 dark:bg-neutral-700 mx-1.5 md:mx-2 hidden sm:block" />
                     <div className="pr-1 hidden sm:block">
                         <div className="w-7 md:w-8 h-7 md:h-8 rounded-full bg-cameroon-red text-white flex items-center justify-center text-xs font-bold border-2 border-white dark:border-neutral-900 shadow-sm ring-2 ring-red-100 dark:ring-red-900/20">
@@ -473,6 +559,62 @@ export const Geoportal = () => {
                         </div>
                     </div>
                 </motion.div>
+
+                {/* Autocomplete Dropdown */}
+                <AnimatePresence>
+                    {(placeSearchResults.length > 0 || (placeSearchQuery.length >= 3 && !isPlaceSearching && placeSearchResults.length === 0)) && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="pointer-events-auto bg-white/90 dark:bg-black/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-white/10 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar"
+                        >
+                            {placeSearchResults.length > 0 ? (
+                                <div className="py-2">
+                                    <div className="px-4 py-2 text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-wider flex items-center justify-between">
+                                        <span>Meilleurs résultats</span>
+                                        <span className="text-[9px] bg-slate-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-slate-500">Nominatim</span>
+                                    </div>
+                                    {placeSearchResults.map((place, i) => (
+                                        <div
+                                            key={place.place_id || i}
+                                            onClick={() => {
+                                                setFlyToLocation({
+                                                    lat: parseFloat(place.lat),
+                                                    lng: parseFloat(place.lon),
+                                                    label: place.display_name.split(',')[0]
+                                                });
+                                                setPlaceSearchQuery(place.display_name.split(',')[0]);
+                                                setPlaceSearchResults([]);
+                                            }}
+                                            className="px-4 py-3 hover:bg-cameroon-green/5 dark:hover:bg-white/5 cursor-pointer flex items-start gap-3 transition-colors border-b border-slate-50 dark:border-white/5 last:border-0 group"
+                                        >
+                                            <div className="mt-0.5 w-6 h-6 rounded-full bg-slate-50 dark:bg-neutral-800 flex items-center justify-center group-hover:bg-cameroon-green group-hover:text-white transition-colors text-slate-400">
+                                                <MapPin size={12} className="group-hover:text-white transition-colors" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="text-sm font-bold text-slate-700 dark:text-neutral-200 group-hover:text-cameroon-green transition-colors">
+                                                    {place.display_name.split(',')[0]}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 dark:text-neutral-500 line-clamp-1">
+                                                    {place.display_name}
+                                                </div>
+                                            </div>
+                                            <div className="text-[9px] font-mono text-slate-300 dark:text-neutral-600 self-center">
+                                                {place.type}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center flex flex-col items-center gap-2 text-slate-400 dark:text-neutral-500">
+                                    <MapPin size={24} className="opacity-20" />
+                                    <p className="text-xs font-medium">Aucun lieu trouvé pour "{placeSearchQuery}"</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
           )}
         </AnimatePresence>
@@ -570,6 +712,7 @@ export const Geoportal = () => {
                         indicator={selectedIndicator}
                         basemap={basemap}
                         adminLevel={analysisLevel}
+                        flyToLocation={flyToLocation}
                     />
 
                     {/* NEW MAP TOOLS - FLOATING RIGHT */}
