@@ -4,11 +4,53 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ───────────────────────────────────────────────────────────────────────────────
+// DEBUG LOGGER
+// ───────────────────────────────────────────────────────────────────────────────
+
+const DEBUG = true; // Mettre à false en production
+
+const log = {
+  info: (message: string, data?: any) => {
+    if (!DEBUG) return;
+    console.log(`%c[GeoServer] ${message}`, 'color: #3B82F6; font-weight: bold;', data ?? '');
+  },
+  success: (message: string, data?: any) => {
+    if (!DEBUG) return;
+    console.log(`%c[GeoServer] ✓ ${message}`, 'color: #10B981; font-weight: bold;', data ?? '');
+  },
+  warn: (message: string, data?: any) => {
+    console.warn(`%c[GeoServer] ⚠ ${message}`, 'color: #F59E0B; font-weight: bold;', data ?? '');
+  },
+  error: (message: string, error?: any) => {
+    console.error(`%c[GeoServer] ✗ ${message}`, 'color: #EF4444; font-weight: bold;', error ?? '');
+  },
+  table: (label: string, data: any) => {
+    if (!DEBUG) return;
+    console.groupCollapsed(`%c[GeoServer] 📊 ${label}`, 'color: #8B5CF6; font-weight: bold;');
+    console.table(data);
+    console.groupEnd();
+  },
+  object: (label: string, obj: any) => {
+    if (!DEBUG) return;
+    console.groupCollapsed(`%c[GeoServer] 📦 ${label}`, 'color: #EC4899; font-weight: bold;');
+    console.dir(obj, { depth: null });
+    console.groupEnd();
+  }
+};
+
+// ───────────────────────────────────────────────────────────────────────────────
 // CONFIGURATION
 // ───────────────────────────────────────────────────────────────────────────────
 
+// En dev, utiliser le proxy Vite pour contourner CORS
+// En prod, utiliser l'URL directe (CORS configuré sur le serveur)
+const isDev = import.meta.env.DEV;
+const GEOSERVER_BASE = isDev 
+  ? '/geoserver'  // Proxy Vite → http://130.127.134.108:8080/geoserver
+  : 'http://130.127.134.108:8080/geoserver';
+
 export const GEOSERVER_CONFIG = {
-  baseUrl: 'http://130.127.134.108:8080/geoserver',
+  baseUrl: GEOSERVER_BASE,
   workspace: 'geoportal',
   srs: 'EPSG:4326',
   wmsPath: '/geoportal/wms',
@@ -18,6 +60,8 @@ export const GEOSERVER_CONFIG = {
 // URLs pré-construites
 export const WMS_URL = `${GEOSERVER_CONFIG.baseUrl}${GEOSERVER_CONFIG.wmsPath}`;
 export const WFS_URL = `${GEOSERVER_CONFIG.baseUrl}${GEOSERVER_CONFIG.wfsPath}`;
+
+log.info('Configuration chargée', { WMS_URL, WFS_URL });
 
 // ───────────────────────────────────────────────────────────────────────────────
 // CATALOGUE DES COUCHES
@@ -231,20 +275,56 @@ export function buildGetFeatureInfoUrl(
 // ───────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch générique WFS avec typage
+ * Fetch générique WFS avec typage et logging complet
  */
 export async function fetchWFS<T = Record<string, any>>(
   layer: string,
   options?: Parameters<typeof buildWFSUrl>[1]
 ): Promise<WFSFeatureCollection<T>> {
   const url = buildWFSUrl(layer, options);
+  const startTime = performance.now();
   
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`WFS Error: ${response.status} ${response.statusText}`);
+  log.info(`Requête WFS: ${layer}`, { 
+    url: url.substring(0, 100) + '...', 
+    options 
+  });
+  
+  try {
+    const response = await fetch(url);
+    const duration = Math.round(performance.now() - startTime);
+    
+    if (!response.ok) {
+      log.error(`HTTP ${response.status} pour ${layer}`, { 
+        status: response.status, 
+        statusText: response.statusText,
+        url 
+      });
+      throw new Error(`WFS Error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json() as WFSFeatureCollection<T>;
+    
+    log.success(`${layer} chargé en ${duration}ms`, {
+      features: data.features?.length ?? 0,
+      totalFeatures: data.totalFeatures,
+      sampleProperties: data.features?.[0]?.properties
+    });
+    
+    // Log détaillé des données
+    if (data.features?.length > 0) {
+      log.object(`Échantillon ${layer} (premier feature)`, data.features[0]);
+      
+      // Afficher les colonnes disponibles
+      const columns = Object.keys(data.features[0].properties || {});
+      log.info(`Colonnes disponibles pour ${layer}:`, columns);
+    }
+    
+    return data;
+  } catch (error) {
+    const duration = Math.round(performance.now() - startTime);
+    log.error(`Échec ${layer} après ${duration}ms`, error);
+    throw error;
   }
-  
-  return response.json();
 }
 
 /**
@@ -366,6 +446,9 @@ export const GeoServerAPI = {
     async getChefsLieuxDep() {
       return fetchWFS(LAYERS.admin.chefsLieuxDep);
     },
+    async getChefsLieuxArrond() {
+      return fetchWFS(LAYERS.admin.chefsLieuxArrond);
+    },
   },
 
   // ─── AGRICULTURE ────────────────────────────────────────────────────────────
@@ -380,8 +463,18 @@ export const GeoServerAPI = {
       return fetchYearRange(LAYERS.thematic.agriculture);
     },
     async getData(product: string, indicator: string, year: number) {
+      const filter = CQL.agriculture(product, indicator, year);
+      console.log('%c[GeoServer] 🔍 Filtre CQL Agriculture:', 'color: #F59E0B; font-weight: bold;', filter);
+      console.log('[GeoServer] Paramètres:', { product, indicator, year });
       return fetchWFS<AgricultureProperties>(LAYERS.thematic.agriculture, {
-        cqlFilter: CQL.agriculture(product, indicator, year)
+        cqlFilter: filter
+      });
+    },
+    /** Charge TOUTES les données sans filtre (pour debug) */
+    async getAllData(limit: number = 100) {
+      console.log('%c[GeoServer] 📥 Chargement échantillon v_prod_agriculture (sans filtre)...', 'color: #10B981;');
+      return fetchWFS<AgricultureProperties>(LAYERS.thematic.agriculture, {
+        maxFeatures: limit
       });
     },
     async getDataForRegion(regionName: string, product: string, indicator: string, year: number) {

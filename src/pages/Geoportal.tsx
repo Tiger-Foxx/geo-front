@@ -3,10 +3,13 @@ import { Sidebar, type ThemeMode } from '../components/layout/Sidebar';
 import { MapContainer, type BasemapType } from '../components/map/MapContainer';
 import { MapTools } from '../components/map/MapTools';
 import { TabularView } from './TabularView';
-import { Search, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2, Wheat, Beef, Fish, Eye, EyeOff, MapPin, Loader2 } from 'lucide-react';
+import { Search, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calendar, GripVertical, Check, X, Minimize2, Maximize2, TrendingUp, BarChart2, Wheat, Beef, Fish, Eye, EyeOff, MapPin, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { CROPS, LIVESTOCK_FILIERES, FISHERIES, PECHE_INFRA_TYPES, AGRI_INDICATORS, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import L from 'leaflet';
+import { useGeoServerFilters, useAgricultureData, useElevageData, useAdminGeoJSON } from '../hooks/useGeoServer';
+import { DATA_MODE } from '../config';
+import type { DataPoint } from '../data/mockData';
 
 export const Geoportal = () => {
     // State: View & Theme
@@ -64,35 +67,139 @@ export const Geoportal = () => {
 
     // Map Ref
     const mapRef = useRef<L.Map | null>(null);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GEOSERVER INTEGRATION - Chargement dynamique des filtres
+    // ═══════════════════════════════════════════════════════════════════════════
+    const geoServerFilters = useGeoServerFilters();
+    const useBackend = DATA_MODE === 'geoserver' && !geoServerFilters.error;
+
+    // ─── DONNÉES THÉMATIQUES GEOSERVER ───────────────────────────────────────
+    const agricultureData = useAgricultureData({
+      product: selectedProduct || '',
+      indicator: selectedIndicator,
+      year: years[0],
+      enabled: useBackend && activeTheme === 'agriculture' && !!selectedProduct
+    });
+
+    const elevageData = useElevageData({
+      filiere: selectedProduct || undefined,
+      year: years[0],
+      level: 'regional',
+      enabled: useBackend && activeTheme === 'elevage'
+    });
+
+    // ─── GÉOMÉTRIES RÉFÉRENTIELLES (toutes les couches admin) ──────────────
+    const regionsGeoJSON = useAdminGeoJSON('regions');
+    const departementsGeoJSON = useAdminGeoJSON('departements');
+    const arrondissementsGeoJSON = useAdminGeoJSON('arrondissements');
+    const chefsLieuxDepGeoJSON = useAdminGeoJSON('chefsLieuxDep');
+    const chefsLieuxArrondGeoJSON = useAdminGeoJSON('chefsLieuxArrond');
     
-    // Dynamic Configuration based on Theme
+    useEffect(() => {
+      if (regionsGeoJSON.data) {
+        console.log('[Geoportal] 🌍 Régions GeoServer chargées:', regionsGeoJSON.data.features.length);
+      }
+      if (departementsGeoJSON.data) {
+        console.log('[Geoportal] 🗺️ Départements GeoServer chargés:', departementsGeoJSON.data.features.length);
+      }
+      if (arrondissementsGeoJSON.data) {
+        console.log('[Geoportal] 📍 Arrondissements GeoServer chargés:', arrondissementsGeoJSON.data.features.length);
+      }
+      if (chefsLieuxDepGeoJSON.data) {
+        console.log('[Geoportal] 🏛️ Chefs-lieux Dép. chargés:', chefsLieuxDepGeoJSON.data.features.length);
+      }
+      if (chefsLieuxArrondGeoJSON.data) {
+        console.log('[Geoportal] 🏢 Chefs-lieux Arrond. chargés:', chefsLieuxArrondGeoJSON.data.features.length);
+      }
+    }, [regionsGeoJSON.data, departementsGeoJSON.data, arrondissementsGeoJSON.data, chefsLieuxDepGeoJSON.data, chefsLieuxArrondGeoJSON.data]);
+
+    // Préparer les données de couches pour le MapContainer
+    const adminLayersData = useMemo(() => ({
+      regions: regionsGeoJSON.data,
+      departements: departementsGeoJSON.data,
+      arrondissements: arrondissementsGeoJSON.data,
+      chefsLieuxDep: chefsLieuxDepGeoJSON.data,
+      chefsLieuxArrond: chefsLieuxArrondGeoJSON.data
+    }), [regionsGeoJSON.data, departementsGeoJSON.data, arrondissementsGeoJSON.data, chefsLieuxDepGeoJSON.data, chefsLieuxArrondGeoJSON.data]);
+
+    // ─── SYNC PRODUIT SÉLECTIONNÉ AVEC GEOSERVER ────────────────────────────
+    // Dès que les vrais produits GeoServer arrivent, synchroniser la sélection
+    useEffect(() => {
+      if (!useBackend) return;
+      
+      if (activeTheme === 'agriculture' && geoServerFilters.products.length > 0) {
+        // Si le produit actuel n'est pas dans la liste GeoServer, prendre le premier
+        if (!geoServerFilters.products.includes(selectedProduct || '')) {
+          const firstProduct = geoServerFilters.products[0];
+          console.log('%c[Geoportal] 🔄 Sync produit avec GeoServer:', 'color: #10B981; font-weight: bold;', firstProduct);
+          setSelectedProduct(firstProduct);
+        }
+        // SYNC INDICATEUR AUSSI - Les vrais indicateurs sont différents!
+        if (geoServerFilters.indicators.length > 0 && !geoServerFilters.indicators.includes(selectedIndicator)) {
+          const firstIndicator = geoServerFilters.indicators[0];
+          console.log('%c[Geoportal] 🔄 Sync indicateur avec GeoServer:', 'color: #10B981; font-weight: bold;', firstIndicator);
+          setSelectedIndicator(firstIndicator);
+        }
+      } else if (activeTheme === 'elevage' && geoServerFilters.filieres.length > 0) {
+        if (!geoServerFilters.filieres.includes(selectedProduct || '')) {
+          const firstFiliere = geoServerFilters.filieres[0];
+          console.log('%c[Geoportal] 🔄 Sync filière avec GeoServer:', 'color: #10B981; font-weight: bold;', firstFiliere);
+          setSelectedProduct(firstFiliere);
+        }
+      }
+    }, [useBackend, activeTheme, geoServerFilters.products, geoServerFilters.filieres, geoServerFilters.indicators, selectedProduct, selectedIndicator]);
+
+    // Sync année avec les vraies plages GeoServer
+    useEffect(() => {
+      if (!useBackend) return;
+      
+      if (activeTheme === 'agriculture' && geoServerFilters.agriYearRange.max > 0) {
+        if (years[0] < geoServerFilters.agriYearRange.min || years[0] > geoServerFilters.agriYearRange.max) {
+          console.log('%c[Geoportal] 🔄 Sync année avec GeoServer:', 'color: #10B981; font-weight: bold;', geoServerFilters.agriYearRange.max);
+          setYears([geoServerFilters.agriYearRange.max]);
+        }
+      } else if (activeTheme === 'elevage' && geoServerFilters.elevageYearRange.max > 0) {
+        if (years[0] < geoServerFilters.elevageYearRange.min || years[0] > geoServerFilters.elevageYearRange.max) {
+          setYears([geoServerFilters.elevageYearRange.max]);
+        }
+      }
+    }, [useBackend, activeTheme, geoServerFilters.agriYearRange, geoServerFilters.elevageYearRange, years]);
+    
+    // Dynamic Configuration based on Theme (avec fallback sur mock si backend KO)
     const sectorConfig = useMemo(() => {
         switch (activeTheme) {
-                        case 'agriculture': 
+            case 'agriculture': 
               return { 
-                products: CROPS, 
-                indicators: AGRI_INDICATORS,
-                minYear: 1998, 
-                maxYear: 2022, 
-                defaultYear: 2022,
+                products: useBackend && geoServerFilters.products.length > 0 
+                  ? geoServerFilters.products 
+                  : CROPS, 
+                indicators: useBackend && geoServerFilters.indicators.length > 0 
+                  ? geoServerFilters.indicators 
+                  : AGRI_INDICATORS,
+                minYear: useBackend ? geoServerFilters.agriYearRange.min : 1998, 
+                maxYear: useBackend ? geoServerFilters.agriYearRange.max : 2022, 
+                defaultYear: useBackend ? geoServerFilters.agriYearRange.max : 2022,
                 granularity: 'departementale' as const
               };
             case 'elevage': 
               return { 
-                products: LIVESTOCK_FILIERES, 
+                products: useBackend && geoServerFilters.filieres.length > 0 
+                  ? geoServerFilters.filieres 
+                  : LIVESTOCK_FILIERES, 
                 indicators: ['Effectif'],
-                minYear: 2020, // Régional seulement 2020-2021
-                maxYear: 2021, 
-                defaultYear: 2021,
+                minYear: useBackend ? geoServerFilters.elevageYearRange.min : 2020,
+                maxYear: useBackend ? geoServerFilters.elevageYearRange.max : 2021, 
+                defaultYear: useBackend ? geoServerFilters.elevageYearRange.max : 2021,
                 granularity: 'regionale' as const
               };
             case 'peche': 
               return { 
                 products: [...FISHERIES], 
                 indicators: ['Production', ...PECHE_INFRA_TYPES],
-                minYear: 2021, // Uniquement 2021
-                maxYear: 2021, 
-                defaultYear: 2021,
+                minYear: useBackend ? geoServerFilters.pecheYearRange.min : 2015,
+                maxYear: useBackend ? geoServerFilters.pecheYearRange.max : 2021, 
+                defaultYear: useBackend ? geoServerFilters.pecheYearRange.max : 2021,
                 granularity: 'multiscalaire' as const
               };
             default: 
@@ -105,7 +212,7 @@ export const Geoportal = () => {
                 granularity: 'departementale' as const
               };
         }
-    }, [activeTheme]);
+    }, [activeTheme, useBackend, geoServerFilters]);
 
         const thematicLevels = useMemo<Array<'region' | 'department'>>(() => {
             if (activeTheme === 'agriculture') return ['department', 'region'];
@@ -121,14 +228,37 @@ export const Geoportal = () => {
             .sort((a,b) => a.localeCompare(b));
     }, [sectorConfig, productSearchTerm]);
 
-    // Handle Theme Change
+    // Handle Theme Change - Utilise les vraies valeurs GeoServer si disponibles
     const handleThemeChange = (newTheme: ThemeMode) => {
       setActiveTheme(newTheme);
       setProductSearchTerm('');
       
-    const newConfig = newTheme === 'agriculture' ? { products: CROPS, defaultYear: 2022, indicator: 'Production', level: 'department' as const } 
-                : newTheme === 'elevage' ? { products: LIVESTOCK_FILIERES, defaultYear: 2021, indicator: 'Effectif', level: 'region' as const }
-                : { products: FISHERIES, defaultYear: 2021, indicator: 'Production', level: 'department' as const };
+      // Déterminer les vrais produits/filières à utiliser
+      const getConfig = () => {
+        if (newTheme === 'agriculture') {
+          const products = useBackend && geoServerFilters.products.length > 0 
+            ? geoServerFilters.products 
+            : CROPS;
+          const indicators = useBackend && geoServerFilters.indicators.length > 0
+            ? geoServerFilters.indicators
+            : ['Production', 'Area Planted', 'Yield'];
+          const defaultYear = useBackend ? geoServerFilters.agriYearRange.max || 2008 : 2008;
+          return { products, indicators, defaultYear, indicator: indicators[0], level: 'department' as const };
+        }
+        if (newTheme === 'elevage') {
+          const products = useBackend && geoServerFilters.filieres.length > 0
+            ? geoServerFilters.filieres
+            : LIVESTOCK_FILIERES;
+          const defaultYear = useBackend ? geoServerFilters.elevageYearRange.max || 2021 : 2021;
+          return { products, indicators: ['Effectif'], defaultYear, indicator: 'Effectif', level: 'region' as const };
+        }
+        // Pêche
+        const defaultYear = useBackend ? geoServerFilters.pecheYearRange.max || 2021 : 2021;
+        return { products: FISHERIES, indicators: ['Production'], defaultYear, indicator: 'Production', level: 'department' as const };
+      };
+      
+      const newConfig = getConfig();
+      console.log('%c[Geoportal] 🔄 Changement thème vers', 'color: #8B5CF6;', newTheme, newConfig);
                       
       setSelectedProduct(newConfig.products[0]);
       setSelectedIndicator(newConfig.indicator);
@@ -172,8 +302,54 @@ export const Geoportal = () => {
        localStorage.setItem('fox_basemap', basemap);
     }, [basemap]);
     
-    // Data Memoization
-    const data = useMemo(() => generateMockData(), []);
+    // Data Memoization - Transformation WFS → DataPoint[]
+    const data = useMemo((): DataPoint[] => {
+      // Si données GeoServer disponibles pour Agriculture
+      if (useBackend && activeTheme === 'agriculture' && agricultureData.data?.features?.length) {
+        console.log('[Geoportal] 🗺️ Utilisation données GeoServer Agriculture:', agricultureData.data.features.length, 'features');
+        
+        return agricultureData.data.features.map((f, idx) => {
+          const props = f.properties as any;
+          return {
+            fnid: f.id || `gs-agri-${idx}`,
+            region: props.region || props.nom_region || 'Unknown',
+            department: props.departement || props.nom_dep || props.region || 'Unknown',
+            product: props.product || selectedProduct || '',
+            season_year: props.annee || years[0],
+            indicator: props.indicator || selectedIndicator,
+            value: props.valeur ?? props.value ?? null,
+            unit: props.unite || (selectedIndicator === 'Production' ? 'tonnes' : selectedIndicator === 'Area Planted' ? 'ha' : 'kg/ha'),
+            status: 'confirmed' as const,
+            granularity: 'departmental' as const
+          };
+        });
+      }
+      
+      // Si données GeoServer disponibles pour Élevage
+      if (useBackend && activeTheme === 'elevage' && elevageData.data?.features?.length) {
+        console.log('[Geoportal] 🗺️ Utilisation données GeoServer Élevage:', elevageData.data.features.length, 'features');
+        
+        return elevageData.data.features.map((f, idx) => {
+          const props = f.properties as any;
+          return {
+            fnid: f.id || `gs-elev-${idx}`,
+            region: props.region || props.nom_region || 'Unknown',
+            department: props.region || 'Unknown', // Élevage = niveau régional
+            product: props.filiere || selectedProduct || '',
+            season_year: props.annee || years[0],
+            indicator: 'Effectif',
+            value: props.effectif ?? null,
+            unit: 'têtes',
+            status: 'confirmed' as const,
+            granularity: 'regional' as const
+          };
+        });
+      }
+      
+      // Fallback Mock data
+      console.log('[Geoportal] 📦 Utilisation données MOCK (backend:', useBackend, ', theme:', activeTheme, ')');
+      return generateMockData();
+    }, [useBackend, activeTheme, agricultureData.data, elevageData.data, selectedProduct, selectedIndicator, years]);
 
         // Clamp analysis level based on data availability
         useEffect(() => {
@@ -259,6 +435,44 @@ export const Geoportal = () => {
     return (
       <div className="relative h-screen w-full bg-slate-50 flex overflow-hidden font-sans">
         
+        {/* ═══ BACKEND STATUS INDICATOR ═══ */}
+        <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
+          <AnimatePresence>
+            {geoServerFilters.loading && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-500 text-white text-xs font-bold rounded-full shadow-lg"
+              >
+                <Loader2 size={14} className="animate-spin" />
+                Connexion GeoServer...
+              </motion.div>
+            )}
+            {!geoServerFilters.loading && useBackend && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-500 text-white text-xs font-bold rounded-full shadow-lg"
+              >
+                <Wifi size={14} />
+                Backend connecté
+              </motion.div>
+            )}
+            {!geoServerFilters.loading && geoServerFilters.error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center gap-2 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-full shadow-lg"
+              >
+                <WifiOff size={14} />
+                Mode hors-ligne (mock)
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* 1. Global Sidebar */}
       <Sidebar 
         view={view} 
@@ -713,6 +927,9 @@ export const Geoportal = () => {
                         basemap={basemap}
                         adminLevel={analysisLevel}
                         flyToLocation={flyToLocation}
+                        regionsGeoJSON={regionsGeoJSON.data}
+                        adminLayers={adminLayersData}
+                        layerConfig={layers}
                     />
 
                     {/* NEW MAP TOOLS - FLOATING RIGHT */}

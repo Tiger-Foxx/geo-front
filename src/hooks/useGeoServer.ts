@@ -54,26 +54,82 @@ export function useGeoServerFilters(): UseGeoServerFiltersResult {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchFilters = useCallback(async () => {
+    console.log('%c[useGeoServerFilters] 🚀 Démarrage chargement filtres...', 'color: #8B5CF6; font-weight: bold;');
     setLoading(true);
     setError(null);
 
     try {
+      const startTime = performance.now();
+      
       // Fetch all in parallel for performance
+      console.log('%c[useGeoServerFilters] ⏳ Requêtes parallèles en cours...', 'color: #3B82F6;');
+      
       const [
         productsData,
         filieresData,
         indicatorsData,
         agriYears,
         elevageYears,
-        pecheYears
+        pecheYears,
+        // DEBUG: Échantillon complet pour voir la vraie structure
+        agriSample
       ] = await Promise.all([
         GeoServerAPI.agriculture.getProducts(),
         GeoServerAPI.elevage.getFilieres(),
         GeoServerAPI.agriculture.getIndicators(),
         GeoServerAPI.agriculture.getYearRange(),
         GeoServerAPI.elevage.getYearRange(),
-        GeoServerAPI.peche.getYearRange()
+        GeoServerAPI.peche.getYearRange(),
+        GeoServerAPI.agriculture.getAllData(5) // 5 premiers enregistrements
       ]);
+
+      const duration = Math.round(performance.now() - startTime);
+      
+      // LOG DÉTAILLÉ DES RÉSULTATS
+      console.log('%c[useGeoServerFilters] ✅ Filtres chargés en ' + duration + 'ms', 'color: #10B981; font-weight: bold;');
+      
+      // ⚠️ DEBUG CRITIQUE: Voir la vraie structure des données agriculture
+      console.groupCollapsed('%c[useGeoServerFilters] 🔬 STRUCTURE RÉELLE v_prod_agriculture', 'color: #EF4444; font-weight: bold; font-size: 14px;');
+      if (agriSample.features?.length > 0) {
+        console.log('Colonnes disponibles:', Object.keys(agriSample.features[0].properties));
+        console.log('Premier enregistrement complet:');
+        console.table([agriSample.features[0].properties]);
+        console.log('5 premiers enregistrements:');
+        console.table(agriSample.features.map(f => f.properties));
+      } else {
+        console.warn('⚠️ Aucune donnée retournée!');
+      }
+      console.groupEnd();
+      
+      // ⚠️ LOG NON-COLLAPSED POUR DEBUG IMMÉDIAT
+      console.log('%c[useGeoServerFilters] 🎯 VALEURS RÉELLES:', 'color: #EF4444; font-weight: bold; font-size: 16px;');
+      console.log('  📊 Produits (premiers 5):', productsData.slice(0, 5));
+      console.log('  📈 Indicateurs:', indicatorsData);
+      console.log('  📅 Années Agriculture:', agriYears);
+      if (agriSample.features?.length > 0) {
+        const sample = agriSample.features[0].properties;
+        console.log('  🔍 Exemple complet:', sample);
+      }
+      
+      console.groupCollapsed('%c[useGeoServerFilters] 📊 PRODUITS AGRICOLES', 'color: #F59E0B; font-weight: bold;');
+      console.log('Total:', productsData.length);
+      console.table(productsData.map((p, i) => ({ index: i, product: p })));
+      console.groupEnd();
+      
+      console.groupCollapsed('%c[useGeoServerFilters] 🐄 FILIÈRES ÉLEVAGE', 'color: #EC4899; font-weight: bold;');
+      console.log('Total:', filieresData.length);
+      console.table(filieresData.map((f, i) => ({ index: i, filiere: f })));
+      console.groupEnd();
+      
+      console.groupCollapsed('%c[useGeoServerFilters] 📈 INDICATEURS', 'color: #06B6D4; font-weight: bold;');
+      console.table(indicatorsData);
+      console.groupEnd();
+      
+      console.groupCollapsed('%c[useGeoServerFilters] 📅 PLAGES TEMPORELLES', 'color: #8B5CF6; font-weight: bold;');
+      console.log('Agriculture:', agriYears);
+      console.log('Élevage:', elevageYears);
+      console.log('Pêche:', pecheYears);
+      console.groupEnd();
 
       setProducts(productsData);
       setFilieres(filieresData);
@@ -81,9 +137,13 @@ export function useGeoServerFilters(): UseGeoServerFiltersResult {
       setAgriYearRange(agriYears);
       setElevageYearRange(elevageYears);
       setPecheYearRange(pecheYears);
+      
     } catch (e) {
-      setError(e instanceof Error ? e : new Error('Failed to fetch filters'));
-      console.error('[GeoServer] Filter fetch error:', e);
+      const err = e instanceof Error ? e : new Error('Failed to fetch filters');
+      setError(err);
+      console.error('%c[useGeoServerFilters] ❌ ERREUR:', 'color: #EF4444; font-weight: bold;', err.message);
+      console.error('Détails:', e);
+      console.log('%c[useGeoServerFilters] ℹ️ Fallback vers données MOCK activé', 'color: #F59E0B;');
     } finally {
       setLoading(false);
     }
@@ -231,7 +291,9 @@ export function usePecheData(year: number = 2021): UsePecheDataResult {
 // HOOK: Données Admin (GeoJSON pour Leaflet)
 // ───────────────────────────────────────────────────────────────────────────────
 
-export function useAdminGeoJSON(level: 'regions' | 'departements' | 'arrondissements') {
+export type AdminLevel = 'regions' | 'departements' | 'arrondissements' | 'chefsLieuxDep' | 'chefsLieuxArrond';
+
+export function useAdminGeoJSON(level: AdminLevel) {
   const [state, setState] = useState<AsyncState<GeoJSON.FeatureCollection>>({
     data: null,
     loading: false,
@@ -241,14 +303,42 @@ export function useAdminGeoJSON(level: 'regions' | 'departements' | 'arrondissem
   useEffect(() => {
     setState(prev => ({ ...prev, loading: true, error: null }));
 
-    const fetchFn = level === 'regions' 
-      ? GeoServerAPI.admin.getRegions
-      : level === 'departements'
-      ? GeoServerAPI.admin.getDepartements
-      : GeoServerAPI.admin.getArrondissements;
+    // Sélectionner la bonne fonction de fetch selon le niveau
+    const fetchFn = (() => {
+      switch (level) {
+        case 'regions': return GeoServerAPI.admin.getRegions;
+        case 'departements': return GeoServerAPI.admin.getDepartements;
+        case 'arrondissements': return GeoServerAPI.admin.getArrondissements;
+        case 'chefsLieuxDep': return GeoServerAPI.admin.getChefsLieuxDep;
+        case 'chefsLieuxArrond': return GeoServerAPI.admin.getChefsLieuxArrond;
+      }
+    })();
 
     fetchFn()
       .then(wfsData => {
+        // DEBUG: Afficher les noms de régions pour vérifier le mapping
+        console.groupCollapsed('%c[useAdminGeoJSON] 🗺️ ' + level.toUpperCase() + ' CHARGÉS', 'color: #8B5CF6; font-weight: bold; font-size: 14px;');
+        console.log('Total:', wfsData.features.length);
+        
+        if (wfsData.features.length > 0) {
+          const firstProps = wfsData.features[0].properties;
+          console.log('Colonnes disponibles:', Object.keys(firstProps));
+          
+          // Extraire les noms pour comparaison
+          const names = wfsData.features.map(f => {
+            const p = f.properties;
+            return {
+              adm1_name: p.adm1_name,
+              adm1_name1: p.adm1_name1,
+              adm1_ref_name1: p.adm1_ref_name1,
+              name: p.name,
+              nom_region: p.nom_region
+            };
+          });
+          console.table(names);
+        }
+        console.groupEnd();
+        
         // Convert WFS to standard GeoJSON
         const geoJSON: GeoJSON.FeatureCollection = {
           type: 'FeatureCollection',
