@@ -14,11 +14,11 @@ import type { DataPoint } from '../data/mockData';
 export const Geoportal = () => {
     // State: View & Theme
     const [view, setView] = useState<'map' | 'table'>('map');
-    const [activeTheme, setActiveTheme] = useState<ThemeMode>('agriculture');
+    const [activeTheme, setActiveTheme] = useState<ThemeMode>('overview'); // Démarrage en mode référentiel (divisions admin)
     const [sidebarPanelOpen, setSidebarPanelOpen] = useState(false);
   
     // State: Data & Layer Selection
-    const [selectedProduct, setSelectedProduct] = useState<string | null>(CROPS[0]);
+    const [selectedProduct, setSelectedProduct] = useState<string | null>(null); // Pas de produit par défaut
     const [selectedIndicator, setSelectedIndicator] = useState<string>('Production');
     const [analysisLevel, setAnalysisLevel] = useState<'region' | 'department'>('department');
     const [years, setYears] = useState<number[]>([2022]);
@@ -88,6 +88,14 @@ export const Geoportal = () => {
       level: 'regional',
       enabled: useBackend && activeTheme === 'elevage'
     });
+    
+    // ─── ÉTAT DE CHARGEMENT GLOBAL ─────────────────────────────────────────────
+    const isThematicDataLoading = useMemo(() => {
+      if (activeTheme === 'overview') return false;
+      if (activeTheme === 'agriculture') return agricultureData.loading;
+      if (activeTheme === 'elevage') return elevageData.loading;
+      return false;
+    }, [activeTheme, agricultureData.loading, elevageData.loading]);
 
     // ─── GÉOMÉTRIES RÉFÉRENTIELLES (toutes les couches admin) ──────────────
     const regionsGeoJSON = useAdminGeoJSON('regions');
@@ -306,21 +314,35 @@ export const Geoportal = () => {
     const data = useMemo((): DataPoint[] => {
       // Si données GeoServer disponibles pour Agriculture
       if (useBackend && activeTheme === 'agriculture' && agricultureData.data?.features?.length) {
-        console.log('[Geoportal] 🗺️ Utilisation données GeoServer Agriculture:', agricultureData.data.features.length, 'features');
+        const features = agricultureData.data.features;
+        console.log('[Geoportal] 🗺️ Utilisation données GeoServer Agriculture:', features.length, 'features');
         
-        return agricultureData.data.features.map((f, idx) => {
+        // Détecter si les données ont un champ département
+        const sampleProps = features[0]?.properties as any;
+        const hasDeptData = !!(sampleProps?.departement || sampleProps?.nom_dep || sampleProps?.adm2_name1);
+        
+        return features.map((f, idx) => {
           const props = f.properties as any;
+          
+          // Extraire région avec toutes les variantes possibles
+          const regionName = props.region || props.nom_region || props.Region || props.REGION || props.adm1_name1 || 'Unknown';
+          
+          // Département: uniquement si le champ existe vraiment dans les données
+          const deptName = hasDeptData 
+            ? (props.departement || props.nom_dep || props.Departement || props.DEPARTEMENT || props.adm2_name1 || regionName)
+            : regionName; // Si pas de dept, utiliser region (données régionales)
+          
           return {
             fnid: f.id || `gs-agri-${idx}`,
-            region: props.region || props.nom_region || 'Unknown',
-            department: props.departement || props.nom_dep || props.region || 'Unknown',
+            region: regionName,
+            department: deptName,
             product: props.product || selectedProduct || '',
             season_year: props.annee || years[0],
             indicator: props.indicator || selectedIndicator,
             value: props.valeur ?? props.value ?? null,
-            unit: props.unite || (selectedIndicator === 'Production' ? 'tonnes' : selectedIndicator === 'Area Planted' ? 'ha' : 'kg/ha'),
+            unit: props.unite || 'unité',
             status: 'confirmed' as const,
-            granularity: 'departmental' as const
+            granularity: hasDeptData ? 'departmental' as const : 'regional' as const
           };
         });
       }
@@ -351,6 +373,16 @@ export const Geoportal = () => {
       return generateMockData();
     }, [useBackend, activeTheme, agricultureData.data, elevageData.data, selectedProduct, selectedIndicator, years]);
 
+        // Détecter si les données agriculture sont régionales ou départementales
+        const agricultureDataLevel = useMemo(() => {
+          if (agricultureData.data?.features?.length) {
+            const props = agricultureData.data.features[0]?.properties as any;
+            const hasDept = !!(props?.departement || props?.nom_dep || props?.adm2_name1);
+            return hasDept ? 'departmental' : 'regional';
+          }
+          return 'regional'; // Par défaut régional
+        }, [agricultureData.data]);
+        
         // Clamp analysis level based on data availability
         useEffect(() => {
             if (activeTheme === 'elevage') {
@@ -367,8 +399,13 @@ export const Geoportal = () => {
             }
 
             if (activeTheme === 'agriculture') {
+                // Si données régionales uniquement, forcer niveau région
+                if (agricultureDataLevel === 'regional' && analysisLevel === 'department') {
+                    setAnalysisLevel('region');
+                    return;
+                }
                 if (!['department', 'region'].includes(analysisLevel)) {
-                    setAnalysisLevel('department');
+                    setAnalysisLevel(agricultureDataLevel === 'regional' ? 'region' : 'department');
                 }
             }
         }, [activeTheme, selectedIndicator, analysisLevel]);
@@ -435,6 +472,36 @@ export const Geoportal = () => {
     return (
       <div className="relative h-screen w-full bg-slate-50 flex overflow-hidden font-sans">
         
+        {/* ═══ INDICATEUR DE CHARGEMENT THÉMATIQUE (CENTRE DE LA CARTE) ═══ */}
+        <AnimatePresence>
+          {isThematicDataLoading && view === 'map' && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[8000] pointer-events-none"
+            >
+              <div className="bg-white/95 dark:bg-black/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 px-6 py-4 flex flex-col items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full border-3 border-slate-200 dark:border-neutral-800" />
+                  <div className="absolute inset-0 w-10 h-10 rounded-full border-3 border-transparent border-t-cameroon-green animate-spin" />
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-sm font-bold text-slate-800 dark:text-white">
+                    Chargement des données
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-neutral-400">
+                    {activeTheme === 'agriculture' && selectedProduct && `${selectedProduct} • ${selectedIndicator}`}
+                    {activeTheme === 'elevage' && selectedProduct && `${selectedProduct} • Effectifs`}
+                  </span>
+                </div>
+                <div className="loader-line w-32 mt-1" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ═══ BACKEND STATUS INDICATOR ═══ */}
         <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
           <AnimatePresence>
@@ -610,10 +677,12 @@ export const Geoportal = () => {
                                         : 'text-slate-500 dark:text-neutral-500 hover:text-slate-700 dark:hover:text-neutral-300 hover:bg-white/50 dark:hover:bg-white/5'
                                 }`}
                             >
-                                {ind === 'Production' && <BarChart2 size={12} />}
-                                {ind === 'Area Planted' && <Layers size={12} />}
-                                {ind === 'Yield' && <TrendingUp size={12} />}
-                                {ind === 'Production' ? 'Prod' : ind === 'Area Planted' ? 'Surface' : 'Rendement'}
+                                {(ind === 'Production' || ind.toLowerCase().includes('prod')) && <BarChart2 size={12} />}
+                                {(ind === 'Area Planted' || ind.toLowerCase().includes('area') || ind.toLowerCase().includes('surface')) && <Layers size={12} />}
+                                {(ind === 'Yield' || ind.toLowerCase().includes('yield') || ind.toLowerCase().includes('rendement')) && <TrendingUp size={12} />}
+                                {ind.toLowerCase().includes('prod') ? 'Prod' : 
+                                 ind.toLowerCase().includes('area') || ind.toLowerCase().includes('surface') ? 'Surface' : 
+                                 ind.toLowerCase().includes('yield') || ind.toLowerCase().includes('rendement') ? 'Rendement' : ind}
                             </button>
                         ))}
                     </div>

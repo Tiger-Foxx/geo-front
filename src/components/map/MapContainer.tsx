@@ -2,7 +2,7 @@ import { MapContainer as LeafletMap, TileLayer, GeoJSON, useMap, useMapEvents, C
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-fullscreen/dist/leaflet.fullscreen.css';
 import type { DataPoint } from '../../data/mockData';
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet-fullscreen';
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -204,6 +204,10 @@ export const MapContainer = ({
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isMapLoading, setIsMapLoading] = useState(true);
+  const [renderKey, setRenderKey] = useState(0); // Force re-render du GeoJSON
+  
+  // Ref pour éviter les closures stales dans les event handlers Leaflet
+  const aggregatedDataRef = useRef<Map<string, { value: number | null; status: string; count: number }>>(new Map());
   
   // Capture map instance
   const MapInstanceCapture = () => {
@@ -293,7 +297,7 @@ export const MapContainer = ({
     data.forEach(d => {
       if (d.season_year === year && d.product === product && d.indicator === indicator) {
         const rawKey = adminLevel === 'department' ? d.department : d.region;
-        const key = getCanonicalRegionName(rawKey); // Utilise le mapping canonique
+        const key = getCanonicalRegionName(rawKey);
         const existing = map.get(key);
         if (!existing) {
           map.set(key, { value: d.value, status: d.status, count: 1 });
@@ -310,12 +314,20 @@ export const MapContainer = ({
     });
     
     if (map.size > 0) {
-      console.log('[MapContainer] 📊 Données agrégées:', map.size, 'zones avec valeurs');
-      console.log('[MapContainer] 🔑 Clés données (canoniques):', Array.from(map.keys()).slice(0, 10), map.size > 10 ? `... (+${map.size - 10})` : '');
+      console.log('[MapContainer] 📊 Données agrégées:', map.size, 'zones');
     }
     
     return map;
   }, [data, year, product, indicator, adminLevel, getCanonicalRegionName]);
+  
+  // Mettre à jour la ref et forcer re-render quand les données changent
+  useEffect(() => {
+    aggregatedDataRef.current = aggregatedData;
+    // Forcer un re-render du GeoJSON pour appliquer les nouveaux styles
+    if (aggregatedData.size > 0) {
+      setRenderKey(prev => prev + 1);
+    }
+  }, [aggregatedData]);
 
   // Debug: vérifier la correspondance des noms avec TOUTES les variantes
   useEffect(() => {
@@ -379,29 +391,42 @@ export const MapContainer = ({
   }, [data, product, indicator]);
 
   // Fonction pour trouver la donnée correspondante en essayant TOUTES les variantes de nom
+  // Utilise aggregatedDataRef.current pour avoir les données ACTUELLES (évite stale closure)
   const findFeatureData = useCallback((feature: any) => {
     const props = feature.properties;
     const isDepartment = props.adm2_name || props.adm2_name1;
+    const currentData = aggregatedDataRef.current; // Données actuelles via ref
     
     // Collecter TOUTES les variantes de noms disponibles (priorité aux noms français avec "1")
     const nameVariants = isDepartment 
-      ? [props.adm2_name1, props.adm2_name, props.adm2_name2, props.adm2_name3, props.adm2_ref_name1, props.nom]
-      : [props.adm1_name1, props.adm1_name, props.adm1_name2, props.adm1_name3, props.adm1_ref_name1, props.nom_region, props.name, props.nom];
+      ? [props.adm2_name1, props.adm2_name, props.adm2_name2, props.adm2_name3, props.adm2_ref_name1, props.nom, props.departement]
+      : [props.adm1_name1, props.adm1_name, props.adm1_name2, props.adm1_name3, props.adm1_ref_name1, props.nom_region, props.name, props.nom, props.region];
     
     // Essayer chaque variante jusqu'à trouver une correspondance
     for (const name of nameVariants) {
       if (!name) continue;
       const canonical = getCanonicalRegionName(name);
-      const data = aggregatedData.get(canonical);
+      const data = currentData.get(canonical);
       if (data) {
         return { data, displayName: name, canonical };
       }
     }
     
-    // Pas de correspondance trouvée - retourner le premier nom disponible pour l'affichage
+    // Essai supplémentaire: recherche partielle (le nom de la feature contient une clé de données ou vice versa)
     const displayName = nameVariants.find(n => n) || 'Inconnu';
-    return { data: null, displayName, canonical: getCanonicalRegionName(displayName) };
-  }, [aggregatedData, getCanonicalRegionName]);
+    const normalizedDisplay = getCanonicalRegionName(displayName);
+    
+    // Chercher si une clé de données correspond partiellement
+    for (const [key, dataValue] of currentData.entries()) {
+      // Match partiel: "centre" dans "centre region" ou "adamaoua" dans "adamaoua region"
+      if (normalizedDisplay.includes(key) || key.includes(normalizedDisplay)) {
+        return { data: dataValue, displayName, canonical: key };
+      }
+    }
+    
+    // Pas de correspondance trouvée
+    return { data: null, displayName, canonical: normalizedDisplay };
+  }, [getCanonicalRegionName]); // Retiré aggregatedData - on utilise la ref
 
   // GeoJSON style
   const getFeatureStyle = useCallback((feature: any) => {
@@ -430,6 +455,7 @@ export const MapContainer = ({
       mouseover: (e: L.LeafletMouseEvent) => {
         const { data: featureInfo, displayName } = findFeatureData(feature);
         const props = feature.properties;
+        
         setTooltipData({
           name: displayName,
           capital: props.capital || props.chef_lieu || props.adm2_ref_name1 || props.adm1_ref_name1,
@@ -609,7 +635,7 @@ export const MapContainer = ({
               
               return (
                 <GeoJSON 
-                  key={`layer-${layer.id}-${idx}-${basemap}-${year}-${product}-${indicator}-${aggregatedData.size}`}
+                  key={`layer-${layer.id}-${renderKey}-${basemap}-${adminLevel}`}
                   data={layerData as any}
                   style={getLayerStyle}
                   onEachFeature={onEachFeature}
@@ -621,7 +647,7 @@ export const MapContainer = ({
           {/* Fallback: Afficher displayGeoJSON si pas de layerConfig */}
           {!layerConfig && displayGeoJSON && (
             <GeoJSON 
-              key={`${year}-${product}-${indicator}-${basemap}-${displayGeoJSON.features.length}`}
+              key={`fallback-${renderKey}-${basemap}-${adminLevel}`}
               data={displayGeoJSON as any}
               style={getFeatureStyle}
               onEachFeature={onEachFeature}

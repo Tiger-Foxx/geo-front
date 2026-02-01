@@ -221,6 +221,11 @@
   animation: spin-gentle 0.8s linear infinite;
 }
 
+/* Border-3 utility */
+.border-3 {
+  border-width: 3px;
+}
+
 /* Fade pulse for text */
 @keyframes text-pulse {
   0%, 100% { opacity: 0.5; }

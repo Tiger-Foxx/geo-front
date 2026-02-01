@@ -1,46 +1,788 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { REGIONS_DEPARTMENTS, REGIONS, generateMockData, AGRI_INDICATORS, MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, Users } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { REGIONS, MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
+import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, Users, AlertCircle, Database, Wheat, Beef, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useGeoServerFilters } from '../hooks/useGeoServer';
+import GeoServerAPI from '../services/geoserver';
+import { DATA_MODE } from '../config';
 
 interface TabularViewProps {
   selectedProduct: string;
   activeTheme: 'agriculture' | 'elevage' | 'peche' | 'overview';
-  years: number[]; // From map view - we'll use as initial suggestion but manage our own
+  years: number[];
   selectedIndicator?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PÊCHE SUB-COMPONENT - Specialized view for fishing data (multiscalar)
+// COMPOSANT INDICATEUR DE CHARGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Based on REAL data structure from Description_datas_brutes_dispo.md:
-// - National: évolution 2015-2021 (prod par type)
-// - Régional: données COMPLÈTES par région (prod par type + infrastructures) - données 2021 uniquement pour l'instant
-// - Départemental: production totale par département - données 2021 uniquement
+const LoadingOverlay = ({ message = 'Chargement' }: { message?: string }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.15 }}
+    className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm"
+  >
+    <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-slate-200 dark:border-white/10">
+      <div className="relative">
+        <div className="w-12 h-12 rounded-full border-3 border-slate-200 dark:border-neutral-700" />
+        <div className="absolute inset-0 w-12 h-12 rounded-full border-3 border-transparent border-t-cameroon-green animate-spin" />
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-sm font-bold text-slate-800 dark:text-white">{message}</span>
+        <div className="loader-dots text-cameroon-green">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSANT ÉTAT VIDE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const EmptyState = ({ 
+  icon: Icon, 
+  title, 
+  description, 
+  action 
+}: { 
+  icon: React.ElementType; 
+  title: string; 
+  description: string; 
+  action?: { label: string; onClick: () => void };
+}) => (
+  <div className="flex-1 flex items-center justify-center p-8">
+    <div className="text-center max-w-md">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-100 dark:bg-neutral-900 flex items-center justify-center">
+        <Icon size={28} className="text-slate-400 dark:text-neutral-600" />
+      </div>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{title}</h3>
+      <p className="text-sm text-slate-500 dark:text-neutral-500 mb-4">{description}</p>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="px-4 py-2 bg-cameroon-green text-white text-sm font-bold rounded-lg hover:bg-cameroon-green/90 transition-colors"
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VUE TABULAIRE AGRICULTURE - Données GeoServer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface AgricultureTableProps {
+  product: string;
+  indicator: string;
+  initialYear: number;
+}
+
+const AgricultureTabularView = ({ product, indicator, initialYear }: AgricultureTableProps) => {
+  const geoServerFilters = useGeoServerFilters();
+  const useBackend = DATA_MODE === 'geoserver' && !geoServerFilters.error;
+  
+  // État local pour les années sélectionnées
+  const [selectedYears, setSelectedYears] = useState<number[]>([initialYear]);
+  const [selectedRegion, setSelectedRegion] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState(''); // Filtre de recherche
+  const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
+  const [isRegionDropdownOpen, setIsRegionDropdownOpen] = useState(false);
+  
+  // État pour stocker les données multi-années
+  const [multiYearData, setMultiYearData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Années disponibles depuis GeoServer
+  const availableYears = useMemo(() => {
+    if (geoServerFilters.agriYearRange.years?.length) {
+      return geoServerFilters.agriYearRange.years.sort((a, b) => b - a);
+    }
+    // Fallback
+    const min = geoServerFilters.agriYearRange.min || 1998;
+    const max = geoServerFilters.agriYearRange.max || 2008;
+    return Array.from({ length: max - min + 1 }, (_, i) => max - i);
+  }, [geoServerFilters.agriYearRange]);
+  
+  // Charger les données pour toutes les années sélectionnées
+  useEffect(() => {
+    if (!useBackend || !product || !indicator) {
+      setIsLoading(false);
+      return;
+    }
+    
+    const fetchAllYearsData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Charger les données pour chaque année en parallèle
+        const promises = selectedYears.map(year => 
+          GeoServerAPI.agriculture.getData(product, indicator, year)
+        );
+        
+        const results = await Promise.all(promises);
+        
+        // Fusionner toutes les données
+        const allData: any[] = [];
+        results.forEach((result, idx) => {
+          const year = selectedYears[idx];
+          result.features.forEach(f => {
+            const props = f.properties as any;
+            allData.push({
+              year,
+              region: props.region || props.nom_region,
+              department: props.departement || props.nom_dep || props.department,
+              value: props.valeur ?? props.value,
+              product: props.product,
+              indicator: props.indicator
+            });
+          });
+        });
+        
+        setMultiYearData(allData);
+        console.log('[TabularView] Données chargées:', allData.length, 'enregistrements');
+      } catch (e) {
+        console.error('[TabularView] Erreur chargement:', e);
+        setError('Impossible de charger les données');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchAllYearsData();
+  }, [useBackend, product, indicator, selectedYears]);
+  
+  // Regrouper les données par département/région
+  const tableData = useMemo(() => {
+    if (!multiYearData.length) return [];
+    
+    // Grouper par zone géographique
+    const grouped = new Map<string, Map<number, number>>();
+    const regionMap = new Map<string, string>();
+    
+    multiYearData.forEach(row => {
+      const zone = row.department || row.region || 'Unknown';
+      if (row.region) regionMap.set(zone, row.region);
+      
+      if (!grouped.has(zone)) {
+        grouped.set(zone, new Map());
+      }
+      grouped.get(zone)!.set(row.year, row.value);
+    });
+    
+    // Convertir en tableau
+    const result = Array.from(grouped.entries()).map(([zone, yearValues]) => {
+      const row: any = { 
+        zone,
+        region: regionMap.get(zone) || zone
+      };
+      selectedYears.forEach(year => {
+        row[`y${year}`] = yearValues.get(year) ?? null;
+      });
+      return row;
+    });
+    
+    // Filtrer par région si sélectionnée
+    let filtered = selectedRegion !== 'all' 
+      ? result.filter(r => r.region === selectedRegion)
+      : result;
+    
+    // Filtrer par recherche textuelle
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(r => 
+        r.zone.toLowerCase().includes(term) || 
+        r.region.toLowerCase().includes(term)
+      );
+    }
+    
+    return filtered.sort((a, b) => a.zone.localeCompare(b.zone));
+  }, [multiYearData, selectedYears, selectedRegion, searchTerm]);
+  
+  // Obtenir les régions uniques
+  const uniqueRegions = useMemo(() => {
+    const regions = new Set(multiYearData.map(d => d.region).filter(Boolean));
+    return Array.from(regions).sort();
+  }, [multiYearData]);
+  
+  // Toggle année
+  const toggleYear = (year: number) => {
+    setSelectedYears(prev => {
+      if (prev.includes(year)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(y => y !== year);
+      }
+      return [...prev, year].sort((a, b) => b - a);
+    });
+  };
+  
+  // Calculer le trend
+  const getTrend = (row: any, year: number) => {
+    const currentVal = row[`y${year}`];
+    const sortedYears = selectedYears.filter(y => y < year).sort((a, b) => b - a);
+    const prevYear = sortedYears[0];
+    if (!prevYear) return null;
+    const prevVal = row[`y${prevYear}`];
+    if (!currentVal || !prevVal) return null;
+    return ((currentVal - prevVal) / prevVal) * 100;
+  };
+  
+  // Unité
+  const getUnit = () => {
+    if (indicator === 'Production') return 't';
+    if (indicator === 'Area Planted') return 'ha';
+    if (indicator === 'Yield') return 'kg/ha';
+    return '';
+  };
+
+  return (
+    <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
+      <div className="w-full h-full flex flex-col space-y-0 max-w-[1800px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
+        
+        {/* Loading Overlay */}
+        <AnimatePresence>
+          {isLoading && <LoadingOverlay message={`Chargement ${product}`} />}
+        </AnimatePresence>
+
+        {/* Header */}
+        <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 p-6 border-b border-slate-100 dark:border-white/5 bg-white dark:bg-[#050505] shrink-0">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center justify-center w-8 h-8 bg-cameroon-green/10 rounded text-cameroon-green">
+                <Wheat size={16} strokeWidth={2.5} />
+              </div>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {product}
+              </h1>
+              <span className="px-2 py-1 bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-400 text-xs font-bold rounded">
+                {indicator}
+              </span>
+            </div>
+            <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">
+              Données par département • {selectedYears.length} année(s) sélectionnée(s)
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-4 items-center">
+            {/* Sélecteur d'années */}
+            <div className="relative z-50">
+              <button
+                onClick={() => setIsYearDropdownOpen(!isYearDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-neutral-900 rounded-xl text-sm font-bold text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <Calendar size={14} className="text-cameroon-green" />
+                <span>{selectedYears.length} année(s)</span>
+                <ChevronDown size={14} className={`transition-transform ${isYearDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {isYearDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute top-full mt-1 right-0 w-[280px] bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50"
+                  >
+                    {/* Actions rapides */}
+                    <div className="p-2 border-b border-slate-100 dark:border-white/5 flex gap-1 flex-wrap">
+                      <button 
+                        onClick={() => setSelectedYears(availableYears.slice(0, 5))}
+                        className="px-2 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200"
+                      >
+                        5 dernières
+                      </button>
+                      <button 
+                        onClick={() => setSelectedYears(availableYears.slice(0, 10))}
+                        className="px-2 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200"
+                      >
+                        10 dernières
+                      </button>
+                      <button 
+                        onClick={() => setSelectedYears(availableYears)}
+                        className="px-2 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200"
+                      >
+                        Toutes
+                      </button>
+                    </div>
+                    
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                      {availableYears.map(year => (
+                        <button
+                          key={year}
+                          onClick={() => toggleYear(year)}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded transition-colors ${
+                            selectedYears.includes(year) 
+                              ? 'bg-cameroon-green/10 text-cameroon-green' 
+                              : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
+                          }`}
+                        >
+                          <span className="font-mono">{year}</span>
+                          {selectedYears.includes(year) && (
+                            <div className="w-4 h-4 rounded bg-cameroon-green flex items-center justify-center">
+                              <Check size={10} className="text-white" strokeWidth={3} />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
+
+            {/* Filtre région */}
+            <div className="relative z-40">
+              <button
+                onClick={() => setIsRegionDropdownOpen(!isRegionDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-neutral-900 rounded-xl text-sm font-bold text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <MapPin size={14} className="text-blue-500" />
+                <span>{selectedRegion === 'all' ? 'Toutes régions' : selectedRegion}</span>
+                <ChevronDown size={14} className={`transition-transform ${isRegionDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {isRegionDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute top-full mt-1 right-0 w-[200px] bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50 max-h-[300px] overflow-y-auto custom-scrollbar"
+                  >
+                    <button
+                      onClick={() => { setSelectedRegion('all'); setIsRegionDropdownOpen(false); }}
+                      className={`w-full px-4 py-2 text-sm font-medium text-left transition-colors ${
+                        selectedRegion === 'all' 
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                          : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
+                      }`}
+                    >
+                      Toutes les régions
+                    </button>
+                    {uniqueRegions.map(region => (
+                      <button
+                        key={region}
+                        onClick={() => { setSelectedRegion(region); setIsRegionDropdownOpen(false); }}
+                        className={`w-full px-4 py-2 text-sm font-medium text-left transition-colors ${
+                          selectedRegion === region 
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                            : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        {region}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            
+            {/* Champ de recherche */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-[180px] pl-9 pr-8 py-2 bg-slate-100 dark:bg-neutral-900 border-0 rounded-xl text-sm font-medium text-slate-700 dark:text-neutral-300 placeholder:text-slate-400 focus:ring-2 focus:ring-cameroon-green/30 outline-none transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            
+            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
+              <Download size={18} strokeWidth={2} />
+            </button>
+          </div>
+        </header>
+
+        {/* Contenu */}
+        <div className="flex-1 overflow-hidden relative">
+          {error ? (
+            <EmptyState 
+              icon={AlertCircle}
+              title="Erreur de chargement"
+              description={error}
+              action={{ label: 'Réessayer', onClick: () => window.location.reload() }}
+            />
+          ) : tableData.length === 0 && !isLoading ? (
+            <EmptyState 
+              icon={Database}
+              title="Aucune donnée"
+              description={`Aucune donnée disponible pour ${product} (${indicator})`}
+            />
+          ) : (
+            <div className="absolute inset-0 overflow-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead className="sticky top-0 z-20 bg-white dark:bg-[#050505]">
+                  <tr>
+                    <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest sticky left-0 z-30 bg-white dark:bg-[#050505] border-b border-r border-slate-200 dark:border-white/10 min-w-[180px]">
+                      Département
+                    </th>
+                    <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-r border-slate-100 dark:border-white/5 min-w-[100px]">
+                      Région
+                    </th>
+                    {selectedYears.sort((a, b) => b - a).map(year => (
+                      <th key={year} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest text-center border-b border-r border-slate-100 dark:border-white/5 min-w-[120px]">
+                        {year}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {tableData.map((row) => (
+                    <tr key={row.zone} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                      <td className="p-4 font-medium text-slate-900 dark:text-white sticky left-0 z-10 bg-white dark:bg-[#050505] group-hover:bg-slate-50 dark:group-hover:bg-[#0A0A0A] transition-colors border-r border-slate-200 dark:border-white/10 text-sm">
+                        {row.zone}
+                      </td>
+                      <td className="p-3 text-xs text-slate-500 dark:text-neutral-500 border-r border-slate-100 dark:border-white/5">
+                        {row.region}
+                      </td>
+                      {selectedYears.sort((a, b) => b - a).map(year => {
+                        const val = row[`y${year}`];
+                        const trend = getTrend(row, year);
+                        
+                        return (
+                          <td key={year} className="p-3 text-center border-r border-slate-100 dark:border-white/5">
+                            {val !== null && val !== undefined ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="text-sm font-semibold tabular-nums text-slate-900 dark:text-neutral-200">
+                                  {typeof val === 'number' ? val.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : val}
+                                  <span className="text-[10px] text-slate-400 ml-0.5">{getUnit()}</span>
+                                </span>
+                                {trend !== null && (
+                                  <div className={`flex items-center text-[10px] font-medium gap-0.5 px-1.5 py-0.5 rounded-full ${
+                                    trend > 0 
+                                      ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                      : trend < 0
+                                        ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
+                                        : 'bg-slate-100 dark:bg-neutral-800 text-slate-500'
+                                  }`}>
+                                    {trend > 0 ? <ArrowUpRight size={10} strokeWidth={3} /> : trend < 0 ? <ArrowDownRight size={10} strokeWidth={3} /> : null}
+                                    <span>{trend > 0 ? '+' : ''}{trend.toFixed(1)}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 dark:text-neutral-700">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer avec stats */}
+        <footer className="shrink-0 p-4 border-t border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-neutral-900/50 flex items-center justify-between text-xs text-slate-500 dark:text-neutral-500">
+          <div className="flex items-center gap-4">
+            <span><strong>{tableData.length}</strong> enregistrements</span>
+            <span>•</span>
+            <span><strong>{selectedYears.length}</strong> années</span>
+            <span>•</span>
+            <span>Source: <strong>GeoServer</strong></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Données en temps réel</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VUE TABULAIRE ÉLEVAGE - Données GeoServer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ElevageTabularView = ({ initialYear }: { product: string; initialYear: number }) => {
+  const geoServerFilters = useGeoServerFilters();
+  const useBackend = DATA_MODE === 'geoserver' && !geoServerFilters.error;
+  
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+  const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
+  
+  // État pour les données multi-filières
+  const [allFilieresData, setAllFilieresData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Années disponibles
+  const availableYears = useMemo(() => {
+    if (geoServerFilters.elevageYearRange.years?.length) {
+      return geoServerFilters.elevageYearRange.years.sort((a, b) => b - a);
+    }
+    return [2021, 2020];
+  }, [geoServerFilters.elevageYearRange]);
+  
+  // Charger toutes les filières pour l'année sélectionnée
+  useEffect(() => {
+    if (!useBackend) {
+      setIsLoading(false);
+      return;
+    }
+    
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Charger TOUTES les données élevage pour l'année (sans filtre filière)
+        const result = await GeoServerAPI.elevage.getRegionalData(undefined, selectedYear);
+        
+        const data = result.features.map(f => {
+          const props = f.properties as any;
+          return {
+            region: props.region || props.nom_region,
+            filiere: props.filiere,
+            effectif: props.effectif
+          };
+        });
+        
+        setAllFilieresData(data);
+        console.log('[TabularView Élevage] Données chargées:', data.length);
+      } catch (e) {
+        console.error('[TabularView Élevage] Erreur:', e);
+        setError('Impossible de charger les données');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [useBackend, selectedYear]);
+  
+  // Pivot: Régions en lignes, Filières en colonnes
+  const { tableData, filieres } = useMemo(() => {
+    if (!allFilieresData.length) return { tableData: [], filieres: [] };
+    
+    const filieresSet = new Set<string>();
+    const grouped = new Map<string, Map<string, number>>();
+    
+    allFilieresData.forEach(row => {
+      const region = row.region;
+      const filiere = row.filiere;
+      if (filiere) filieresSet.add(filiere);
+      
+      if (!grouped.has(region)) {
+        grouped.set(region, new Map());
+      }
+      grouped.get(region)!.set(filiere, row.effectif);
+    });
+    
+    const filieresList = Array.from(filieresSet).sort();
+    
+    const result = Array.from(grouped.entries()).map(([region, filiereValues]) => {
+      const row: any = { region };
+      let total = 0;
+      filieresList.forEach(f => {
+        const val = filiereValues.get(f) ?? null;
+        row[f] = val;
+        if (val) total += val;
+      });
+      row.total = total;
+      return row;
+    });
+    
+    return { 
+      tableData: result.sort((a, b) => b.total - a.total),
+      filieres: filieresList 
+    };
+  }, [allFilieresData]);
+
+  return (
+    <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
+      <div className="w-full h-full flex flex-col space-y-0 max-w-[1800px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
+        
+        <AnimatePresence>
+          {isLoading && <LoadingOverlay message="Chargement élevage" />}
+        </AnimatePresence>
+
+        {/* Header */}
+        <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 p-6 border-b border-slate-100 dark:border-white/5 bg-white dark:bg-[#050505] shrink-0">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center justify-center w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded text-amber-600 dark:text-amber-400">
+                <Beef size={16} strokeWidth={2.5} />
+              </div>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                Effectifs Élevage
+              </h1>
+              <span className="px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold rounded">
+                {selectedYear}
+              </span>
+            </div>
+            <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">
+              Données régionales • Toutes filières • <span className="text-amber-600 dark:text-amber-400">Unité: têtes</span>
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-4 items-center">
+            {/* Sélecteur d'année */}
+            <div className="relative z-50">
+              <button
+                onClick={() => setIsYearDropdownOpen(!isYearDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-sm font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+              >
+                <Calendar size={14} />
+                <span>{selectedYear}</span>
+                <ChevronDown size={14} className={`transition-transform ${isYearDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {isYearDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute top-full mt-1 right-0 bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50"
+                  >
+                    {availableYears.map(year => (
+                      <button
+                        key={year}
+                        onClick={() => { setSelectedYear(year); setIsYearDropdownOpen(false); }}
+                        className={`w-full px-4 py-2 text-sm font-medium text-left transition-colors ${
+                          selectedYear === year 
+                            ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' 
+                            : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            
+            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
+              <Download size={18} strokeWidth={2} />
+            </button>
+          </div>
+        </header>
+
+        {/* Contenu */}
+        <div className="flex-1 overflow-hidden relative">
+          {error ? (
+            <EmptyState icon={AlertCircle} title="Erreur" description={error} />
+          ) : tableData.length === 0 && !isLoading ? (
+            <EmptyState icon={Database} title="Aucune donnée" description="Aucune donnée élevage disponible" />
+          ) : (
+            <div className="absolute inset-0 overflow-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 z-20 bg-white dark:bg-[#050505]">
+                  <tr>
+                    <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest sticky left-0 z-30 bg-white dark:bg-[#050505] border-b border-r border-slate-200 dark:border-white/10 min-w-[150px]">
+                      Région
+                    </th>
+                    {filieres.map(filiere => (
+                      <th key={filiere} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-r border-slate-100 dark:border-white/5 min-w-[100px]">
+                        <div>{filiere}</div>
+                        <div className="text-[9px] font-normal text-slate-400 dark:text-neutral-600 mt-0.5">têtes</div>
+                      </th>
+                    ))}
+                    <th className="p-3 font-semibold text-amber-600 dark:text-amber-400 text-[11px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10 min-w-[120px] bg-amber-50/50 dark:bg-amber-900/10">
+                      <div>Total</div>
+                      <div className="text-[9px] font-normal text-amber-500/70 dark:text-amber-500/50 mt-0.5">têtes</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {tableData.map(row => (
+                    <tr key={row.region} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                      <td className="p-4 font-medium text-slate-900 dark:text-white sticky left-0 z-10 bg-white dark:bg-[#050505] group-hover:bg-slate-50 dark:group-hover:bg-[#0A0A0A] transition-colors border-r border-slate-200 dark:border-white/10 text-sm">
+                        {row.region}
+                      </td>
+                      {filieres.map(filiere => {
+                        const val = row[filiere];
+                        return (
+                          <td key={filiere} className="p-3 text-center border-r border-slate-100 dark:border-white/5">
+                            {val !== null && val !== undefined ? (
+                              <span className="text-sm font-semibold tabular-nums text-slate-900 dark:text-neutral-200">
+                                {val.toLocaleString('fr-FR')}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 dark:text-neutral-700">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="p-3 text-center bg-amber-50/50 dark:bg-amber-900/10">
+                        <span className="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-400">
+                          {row.total?.toLocaleString('fr-FR')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer */}
+        <footer className="shrink-0 p-4 border-t border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-neutral-900/50 flex items-center justify-between text-xs text-slate-500 dark:text-neutral-500">
+          <div className="flex items-center gap-4">
+            <span><strong>{tableData.length}</strong> régions</span>
+            <span>•</span>
+            <span><strong>{filieres.length}</strong> filières</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Données GeoServer</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VUE TABULAIRE PÊCHE (conservée avec mock)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type PecheDataDimension = 'production' | 'infrastructure';
 
 const PECHE_LABELS: Record<string, string> = {
-  // Production
   'peche_artisanale_maritime': 'Pêche Artisanale Maritime',
   'peche_continentale': 'Pêche Continentale', 
   'peche_industrielle': 'Pêche Industrielle',
   'aquaculture': 'Aquaculture',
   'production_totale': 'Production Totale',
-  // Infra
   'nb_pisciculteurs': 'Pisciculteurs',
   'etangs_actifs': 'Étangs Actifs',
   'fumoirs': 'Fumoirs',
   'halls_vente': 'Halls de Vente',
   'bacs': 'Bacs',
   'cages': 'Cages',
-  // Legacy (mock)
   'prod_industrielle': 'Industrielle',
   'prod_continentale': 'Continentale', 
   'prod_artisanale': 'Artisanale',
   'prod_totale': 'Total',
-  'etangs': 'Étangs',
 };
 
 const PECHE_ICONS: Record<string, typeof Fish> = {
@@ -55,16 +797,13 @@ const PECHE_ICONS: Record<string, typeof Fish> = {
   'halls_vente': Warehouse,
   'bacs': Layers,
   'cages': Fish,
-  // Legacy
   'prod_industrielle': Factory,
   'prod_continentale': Waves,
   'prod_artisanale': Anchor,
   'prod_totale': BarChart3,
-  'etangs': Waves,
 };
 
 const PecheTabularView = () => {
-  // Available years for national data (from mock - 2015-2021)
   const availableYears = useMemo(() => MOCK_DB.peche.national.map(d => d.annee).sort((a, b) => b - a), []);
   
   const [selectedYear, setSelectedYear] = useState<number>(availableYears[0] || 2021);
@@ -74,46 +813,23 @@ const PecheTabularView = () => {
   
   useEffect(() => {
     setIsLoading(true);
-    const timer = setTimeout(() => setIsLoading(false), 200);
+    const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
   }, [selectedYear, dimension]);
 
-  // Data from mock DB
   const nationalData = MOCK_DB.peche.national;
   const regionalData = MOCK_DB.peche.regional;
   const departementalData = MOCK_DB.peche.departemental;
   
-  // Get national data for selected year
-  const nationalYearData = useMemo(() => 
-    nationalData.find(d => d.annee === selectedYear), 
-    [nationalData, selectedYear]
-  );
-  
-  // Get previous year data for trend calculation
-  const prevYearData = useMemo(() => 
-    nationalData.find(d => d.annee === selectedYear - 1),
-    [nationalData, selectedYear]
-  );
+  const nationalYearData = useMemo(() => nationalData.find(d => d.annee === selectedYear), [nationalData, selectedYear]);
+  const prevYearData = useMemo(() => nationalData.find(d => d.annee === selectedYear - 1), [nationalData, selectedYear]);
 
   return (
     <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
       <div className="w-full h-full flex flex-col space-y-0 max-w-[1600px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
         
-        {/* Loading Overlay */}
         <AnimatePresence>
-          {isLoading && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-[2px]"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <div className="loader-dots text-blue-500"><span></span><span></span><span></span></div>
-                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">Chargement</span>
-              </div>
-            </motion.div>
-          )}
+          {isLoading && <LoadingOverlay message="Chargement pêche" />}
         </AnimatePresence>
 
         {/* Header */}
@@ -123,15 +839,14 @@ const PecheTabularView = () => {
               <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
                 <Fish size={16} strokeWidth={2.5} />
               </div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Données Pêche & Aquaculture</h1>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pêche & Aquaculture</h1>
             </div>
             <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">
-              Exploration multidimensionnelle : Production par type & Infrastructures
+              Production par type & Infrastructures
             </p>
           </div>
           
           <div className="flex flex-wrap gap-4 items-center">
-            
             {/* Year Selector */}
             <div className="relative z-50">
               <button
@@ -154,10 +869,7 @@ const PecheTabularView = () => {
                     {availableYears.map(year => (
                       <button
                         key={year}
-                        onClick={() => {
-                          setSelectedYear(year);
-                          setIsYearDropdownOpen(false);
-                        }}
+                        onClick={() => { setSelectedYear(year); setIsYearDropdownOpen(false); }}
                         className={`w-full px-4 py-2 text-sm font-medium text-left transition-colors ${
                           selectedYear === year 
                             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
@@ -174,7 +886,7 @@ const PecheTabularView = () => {
 
             <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
 
-            {/* Dimension Toggle: Production vs Infrastructure */}
+            {/* Dimension Toggle */}
             <div className="flex p-1 rounded-xl bg-slate-100 dark:bg-neutral-900 gap-1">
               <button
                 onClick={() => setDimension('production')}
@@ -196,11 +908,11 @@ const PecheTabularView = () => {
                 }`}
               >
                 <Building2 size={14} />
-                <span>Infrastructures</span>
+                <span>Infra</span>
               </button>
             </div>
             
-            <button className="ml-auto p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
+            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
               <Download size={18} strokeWidth={2} />
             </button>
           </div>
@@ -210,17 +922,13 @@ const PecheTabularView = () => {
         <div className="flex-1 overflow-hidden bg-white dark:bg-[#050505] relative flex flex-col">
           <div className="absolute inset-0 overflow-auto custom-scrollbar p-6">
             
-            {/* ═══════════════════════════════════════════════════════════════════════════ */}
-            {/* PRODUCTION DIMENSION */}
-            {/* ═══════════════════════════════════════════════════════════════════════════ */}
             {dimension === 'production' && (
               <div className="space-y-8">
-                
-                {/* Section 1: National Summary for Selected Year */}
+                {/* National Summary */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
                     <Globe size={18} className="text-blue-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Résumé National {selectedYear}</h2>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">National {selectedYear}</h2>
                   </div>
                   
                   {nationalYearData ? (
@@ -252,7 +960,7 @@ const PecheTabularView = () => {
                                 trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-rose-600' : 'text-slate-400'
                               }`}>
                                 {trend > 0 ? <ArrowUpRight size={12} /> : trend < 0 ? <ArrowDownRight size={12} /> : null}
-                                {trend > 0 ? '+' : ''}{trend.toFixed(1)}% vs {selectedYear - 1}
+                                {trend > 0 ? '+' : ''}{trend.toFixed(1)}%
                               </div>
                             )}
                           </div>
@@ -261,17 +969,16 @@ const PecheTabularView = () => {
                     </div>
                   ) : (
                     <div className="p-8 text-center text-slate-400 dark:text-neutral-600">
-                      Pas de données nationales pour {selectedYear}
+                      Pas de données pour {selectedYear}
                     </div>
                   )}
                 </section>
 
-                {/* Section 2: Historical Trend Table */}
+                {/* Historical Table */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
                     <TrendingUp size={18} className="text-blue-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Évolution Historique</h2>
-                    <span className="text-xs text-slate-400">2015 → 2021</span>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Évolution</h2>
                   </div>
                   
                   <div className="overflow-x-auto">
@@ -284,7 +991,6 @@ const PecheTabularView = () => {
                               {PECHE_LABELS[key]}
                             </th>
                           ))}
-                          <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10">Croiss.</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5">
@@ -305,17 +1011,6 @@ const PecheTabularView = () => {
                                 {row[key].toLocaleString('fr-FR')}
                               </td>
                             ))}
-                            <td className="p-3 text-center">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${
-                                row.taux_croissance > 0 
-                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                                  : row.taux_croissance < 0 
-                                    ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
-                                    : 'bg-slate-100 dark:bg-neutral-800 text-slate-500'
-                              }`}>
-                                {row.taux_croissance > 0 ? '+' : ''}{row.taux_croissance.toFixed(1)}%
-                              </span>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -323,34 +1018,25 @@ const PecheTabularView = () => {
                   </div>
                 </section>
 
-                {/* Section 3: Départemental Production (2021 only based on available data) */}
+                {/* Départemental */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
                     <Layers size={18} className="text-purple-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Production par Département</h2>
-                    <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded">
-                      Données 2021 uniquement
-                    </span>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Par Département</h2>
                   </div>
                   
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {REGIONS.map(region => {
                       const deptData = departementalData.filter(d => d.region === region).sort((a, b) => b.valeur - a.valeur);
                       const regionTotal = deptData.reduce((sum, d) => sum + d.valeur, 0);
-                      const isCoastal = ['Littoral', 'Sud', 'Sud-Ouest'].includes(region);
                       const maxVal = Math.max(...deptData.map(d => d.valeur), 1);
                       
                       if (regionTotal === 0) return null;
                       
                       return (
                         <div key={region} className="border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden">
-                          <div className={`p-3 flex items-center justify-between ${
-                            isCoastal ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-slate-50 dark:bg-neutral-900'
-                          }`}>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-slate-900 dark:text-white">{region}</span>
-                              {isCoastal && <Anchor size={12} className="text-blue-500" />}
-                            </div>
+                          <div className="p-3 flex items-center justify-between bg-slate-50 dark:bg-neutral-900">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">{region}</span>
                             <span className="text-sm font-bold text-purple-600 dark:text-purple-400 tabular-nums">
                               {regionTotal.toLocaleString('fr-FR')} t
                             </span>
@@ -377,17 +1063,11 @@ const PecheTabularView = () => {
               </div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════════════════ */}
-            {/* INFRASTRUCTURE DIMENSION */}
-            {/* ═══════════════════════════════════════════════════════════════════════════ */}
             {dimension === 'infrastructure' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Building2 size={18} className="text-teal-500" />
                   <h2 className="text-lg font-bold text-slate-800 dark:text-white">Infrastructures par Région</h2>
-                  <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded">
-                    Données 2021 uniquement
-                  </span>
                 </div>
                 
                 <div className="overflow-x-auto">
@@ -416,15 +1096,11 @@ const PecheTabularView = () => {
                         return totalB - totalA;
                       }).map(row => {
                         const total = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (row[k] || 0), 0);
-                        const isCoastal = ['Littoral', 'Sud', 'Sud-Ouest'].includes(row.region);
                         
                         return (
                           <tr key={row.region} className="hover:bg-teal-50/50 dark:hover:bg-teal-900/10 transition-colors">
                             <td className="p-4 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-white/10 text-sm sticky left-0 bg-white dark:bg-[#050505] z-10">
-                              <div className="flex items-center gap-2">
-                                {row.region}
-                                {isCoastal && <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[8px] font-bold uppercase rounded">Côtier</span>}
-                              </div>
+                              {row.region}
                             </td>
                             {PECHE_INFRA_TYPES.map(inf => (
                               <td key={inf} className="p-3 text-center">
@@ -456,420 +1132,63 @@ const PecheTabularView = () => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN TABULAR VIEW COMPONENT
+// VUE TABULAIRE OVERVIEW (Référentiel)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const TabularView = ({ selectedProduct, activeTheme, selectedIndicator = 'Production' }: TabularViewProps) => {
-  // If theme is PECHE, render specialized view
-  if (activeTheme === 'peche') {
-    return <PecheTabularView />;
-  }
-  
-  // Otherwise, continue with Agriculture/Elevage view
-  const [selectedRegion, setSelectedRegion] = useState('Centre');
-  const [isRegionDropdownOpen, setIsRegionDropdownOpen] = useState(false);
-  const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
-  const [pivotMode, setPivotMode] = useState<'years-rows' | 'dept-rows'>('years-rows');
-  const [localIndicator, setLocalIndicator] = useState(selectedIndicator);
-  
-  // Determine available years based on theme
-  const availableYears = useMemo(() => {
-    if (activeTheme === 'agriculture') return Array.from({ length: 25 }, (_, i) => 2022 - i); // 1998-2022
-    if (activeTheme === 'elevage') return [2021, 2020];
-    return Array.from({ length: 7 }, (_, i) => 2022 - i);
-  }, [activeTheme]);
-  
-  // Default to last 5 years for performance (user can expand)
-  const defaultYearsForTheme = useMemo(() => {
-    if (activeTheme === 'agriculture') return availableYears.slice(0, 5); // Last 5 years
-    return availableYears; // Elevage/Peche have few years anyway
-  }, [activeTheme, availableYears]);
-  
-  // TabularView's OWN period state - defaults to reasonable subset
-  const [selectedYears, setSelectedYears] = useState<number[]>(defaultYearsForTheme);
-  
-  // Reset selected years when theme changes
-  useEffect(() => {
-    setSelectedYears(defaultYearsForTheme);
-  }, [activeTheme, defaultYearsForTheme]);
-  
-  // Sync local indicator with prop
-  useEffect(() => {
-    setLocalIndicator(selectedIndicator);
-  }, [selectedIndicator]);
-  
-  // Memoize data generation (expensive!)
-  const data = useMemo(() => generateMockData(), []);
-  const departments = useMemo(() => REGIONS_DEPARTMENTS[selectedRegion] || [], [selectedRegion]);
-  
-  // Memoize sorted years to avoid re-sorting on every render
-  const displayYears = useMemo(() => [...selectedYears].sort((a, b) => b - a), [selectedYears]);
-  
-  const rows = useMemo(() => pivotMode === 'years-rows' ? displayYears : departments, [pivotMode, displayYears, departments]);
-  const cols = useMemo(() => pivotMode === 'years-rows' ? departments : displayYears, [pivotMode, displayYears, departments]);
-
-  // Toggle year selection - memoized callback
-  const toggleYear = useCallback((year: number) => {
-    setSelectedYears(prev => {
-      if (prev.includes(year)) {
-        if (prev.length === 1) return prev;
-        return prev.filter(y => y !== year);
-      }
-      return [...prev, year];
-    });
-  }, []);
-  
-  // Quick actions for period selection - memoized
-  const selectAllYears = useCallback(() => setSelectedYears(availableYears), [availableYears]);
-  const selectLastN = useCallback((n: number) => setSelectedYears(availableYears.slice(0, n)), [availableYears]);
-
-  // Memoize getCellData to avoid recreating on every render
-  const getCellData = useCallback((dept: string, year: number) => {
-    const record = data.find(d => d.department === dept && d.season_year === year && d.product === selectedProduct && d.indicator === localIndicator);
-    const val = record?.value;
-    const status = record?.status || 'unavailable';
-    const unit = record?.unit || 'tonnes';
-    
-    // Trend logic (compare with previous year)
-    const prevRecord = data.find(d => d.department === dept && d.season_year === year - 1 && d.product === selectedProduct && d.indicator === localIndicator);
-    const prevYearVal = prevRecord?.value;
-    
-    let trend: 'up' | 'down' | 'stable' = 'stable';
-    let percent = 0;
-
-    if (val && val > 0 && prevYearVal && prevYearVal > 0) {
-        trend = val > prevYearVal ? 'up' : val < prevYearVal ? 'down' : 'stable';
-        percent = ((val - prevYearVal) / prevYearVal) * 100;
-    }
-    
-    return { val, status, trend, percent, unit };
-  }, [data, selectedProduct, localIndicator]);
-
-  // Click outside to close dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.region-selector-trigger') && !target.closest('.region-dropdown-content')) {
-        setIsRegionDropdownOpen(false);
-      }
-      if (!target.closest('.period-selector-trigger') && !target.closest('.period-dropdown-content')) {
-        setIsPeriodDropdownOpen(false);
-      }
-    };
-    if (isRegionDropdownOpen || isPeriodDropdownOpen) {
-        document.addEventListener('click', handleClickOutside);
-    }
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [isRegionDropdownOpen, isPeriodDropdownOpen]);
-
-  // Simulated loading state (will be real when connected to API)
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // Simulate loading when filters change
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => setIsLoading(false), 300);
-    return () => clearTimeout(timer);
-  }, [selectedProduct, selectedRegion, selectedYears, localIndicator]);
-
-  return (
-    <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
-       <div className="w-full h-full flex flex-col space-y-0 max-w-[1600px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
-        
-        {/* Elegant Loading Overlay */}
-        <AnimatePresence>
-          {isLoading && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-[2px]"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <div className="loader-dots text-cameroon-green">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <span className="text-[11px] font-medium text-slate-400 dark:text-neutral-500 uppercase tracking-widest loader-text">
-                  Chargement
-                </span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Header - Completely Flat, simple borders */}
-        <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 p-6 border-b border-slate-100 dark:border-white/5 bg-white dark:bg-[#050505] shrink-0">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-                <div className="flex items-center justify-center w-8 h-8 bg-slate-100 dark:bg-white/5 rounded text-slate-900 dark:text-white">
-                    <BarChart3 size={16} strokeWidth={2.5} />
-                </div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Matrice Data</h1>
-            </div>
-            <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">Exploration brute par bassin et période</p>
+const OverviewTabularView = () => (
+  <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
+    <div className="w-full h-full flex flex-col items-center justify-center max-w-[800px] mx-auto">
+      <div className="text-center p-8">
+        <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-slate-100 dark:bg-neutral-900 flex items-center justify-center">
+          <Globe size={36} className="text-slate-400 dark:text-neutral-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">Mode Référentiel</h2>
+        <p className="text-slate-500 dark:text-neutral-500 max-w-md mx-auto mb-6">
+          La vue tabulaire n'est pas disponible en mode référentiel. 
+          Sélectionnez un thème pour visualiser les données.
+        </p>
+        <div className="flex justify-center gap-3">
+          <div className="px-4 py-2 bg-cameroon-green/10 text-cameroon-green rounded-lg text-sm font-bold flex items-center gap-2">
+            <Wheat size={16} />
+            Agriculture
           </div>
-          
-          <div className="flex flex-wrap gap-4 items-center w-full md:w-auto">
-             {/* Pivot Toggles - Flat Segmented Control */}
-             <div className="flex p-0.5 rounded-lg border border-slate-200 dark:border-white/10">
-                <button 
-                    onClick={() => setPivotMode('years-rows')}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${pivotMode === 'years-rows' ? 'bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-neutral-500 dark:hover:text-neutral-300'}`}
-                >
-                    Par Années
-                </button>
-                 <button 
-                    onClick={() => setPivotMode('dept-rows')}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${pivotMode === 'dept-rows' ? 'bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-neutral-500 dark:hover:text-neutral-300'}`}
-                >
-                    Par Départements
-                </button>
-             </div>
-
-             <div className="h-8 w-px bg-slate-100 dark:bg-white/10 hidden md:block" />
-
-             {/* Indicator Selector (Agriculture only) */}
-             {activeTheme === 'agriculture' && (
-               <div className="flex p-0.5 rounded-lg border border-slate-200 dark:border-white/10">
-                  {AGRI_INDICATORS.map(ind => (
-                      <button 
-                          key={ind}
-                          onClick={() => setLocalIndicator(ind)}
-                          className={`px-3 py-1.5 text-[10px] font-semibold rounded-md transition-colors flex items-center gap-1 ${localIndicator === ind ? 'bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-neutral-500 dark:hover:text-neutral-300'}`}
-                      >
-                          {ind === 'Production' && <BarChart3 size={10} />}
-                          {ind === 'Area Planted' && <Layers size={10} />}
-                          {ind === 'Yield' && <TrendingUp size={10} />}
-                          {ind === 'Production' ? 'Prod.' : ind === 'Area Planted' ? 'Surf.' : 'Rend.'}
-                      </button>
-                  ))}
-               </div>
-             )}
-
-             <div className="h-8 w-px bg-slate-100 dark:bg-white/10 hidden md:block" />
-
-             {/* PERIOD SELECTOR - NEW! Multi-select for tabular view */}
-             <div className="relative z-50 min-w-[180px]">
-                <button
-                    onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}
-                    className="period-selector-trigger w-full flex items-center justify-between gap-3 bg-transparent border-b border-slate-200 dark:border-white/10 px-2 py-2 text-sm font-semibold transition-colors hover:border-slate-400 dark:hover:border-white/30 outline-none group"
-                >
-                    <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
-                        <Calendar size={14} className="text-slate-400 dark:text-slate-600 group-hover:text-cameroon-green transition-colors" />
-                        <span>
-                           {selectedYears.length === availableYears.length 
-                              ? 'Toutes périodes' 
-                              : selectedYears.length === 1 
-                                ? selectedYears[0] 
-                                : `${selectedYears.length} années`}
-                        </span>
-                    </div>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isPeriodDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-                
-                <AnimatePresence>
-                    {isPeriodDropdownOpen && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 4 }}
-                            transition={{ duration: 0.1 }}
-                            className="period-dropdown-content absolute top-full mt-1 left-0 w-[220px] max-h-[350px] overflow-hidden bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg flex flex-col z-[100]"
-                        >
-                            {/* Quick Actions */}
-                            <div className="p-2 border-b border-slate-100 dark:border-white/5 flex gap-1 flex-wrap">
-                                <button 
-                                   onClick={selectAllYears}
-                                   className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${selectedYears.length === availableYears.length ? 'bg-cameroon-green text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200 dark:hover:bg-white/20'}`}
-                                >
-                                   Toutes
-                                </button>
-                                {availableYears.length > 5 && (
-                                  <>
-                                    <button 
-                                       onClick={() => selectLastN(5)}
-                                       className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${selectedYears.length === 5 ? 'bg-cameroon-green text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200 dark:hover:bg-white/20'}`}
-                                    >
-                                       5 ans
-                                    </button>
-                                    <button 
-                                       onClick={() => selectLastN(10)}
-                                       className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${selectedYears.length === 10 ? 'bg-cameroon-green text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-neutral-400 hover:bg-slate-200 dark:hover:bg-white/20'}`}
-                                    >
-                                       10 ans
-                                    </button>
-                                  </>
-                                )}
-                            </div>
-                            
-                            {/* Year List */}
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
-                                {availableYears.map(year => (
-                                    <button
-                                        key={year}
-                                        onClick={() => toggleYear(year)}
-                                        className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded transition-colors ${
-                                            selectedYears.includes(year) 
-                                            ? 'bg-cameroon-green/10 text-cameroon-green' 
-                                            : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
-                                        }`}
-                                    >
-                                        <span className="font-mono">{year}</span>
-                                        {selectedYears.includes(year) && (
-                                            <div className="w-4 h-4 rounded bg-cameroon-green flex items-center justify-center">
-                                                <Check size={10} className="text-white" strokeWidth={3} />
-                                            </div>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                            
-                            {/* Footer */}
-                            <div className="p-2 border-t border-slate-100 dark:border-white/5 text-center">
-                               <span className="text-[10px] text-slate-400 dark:text-neutral-600">
-                                  {selectedYears.length} sur {availableYears.length} sélectionnées
-                               </span>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-             </div>
-
-             <div className="h-8 w-px bg-slate-100 dark:bg-white/10 hidden md:block" />
-
-             {/* Region Selector - Minimalist */}
-             <div className="relative z-40 min-w-[200px]">
-                <button
-                    onClick={() => setIsRegionDropdownOpen(!isRegionDropdownOpen)}
-                    className="region-selector-trigger w-full flex items-center justify-between gap-3 bg-transparent border-b border-slate-200 dark:border-white/10 px-2 py-2 text-sm font-semibold transition-colors hover:border-slate-400 dark:hover:border-white/30 outline-none group"
-                >
-                    <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
-                        <MapPin size={14} className="text-slate-400 dark:text-slate-600 group-hover:text-cameroon-green transition-colors" />
-                        <span>{selectedRegion}</span>
-                    </div>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isRegionDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-                
-                <AnimatePresence>
-                    {isRegionDropdownOpen && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 4 }}
-                            transition={{ duration: 0.1 }}
-                            className="region-dropdown-content absolute top-full mt-1 left-0 w-full max-h-[300px] overflow-y-auto custom-scrollbar bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg p-1 flex flex-col gap-0.5 z-[100]"
-                        >
-                            {Object.keys(REGIONS_DEPARTMENTS).map(r => (
-                                <button
-                                    key={r}
-                                    onClick={() => {
-                                        setSelectedRegion(r);
-                                        setIsRegionDropdownOpen(false);
-                                    }}
-                                    className={`text-left px-3 py-2 text-xs font-medium rounded transition-colors ${
-                                        selectedRegion === r 
-                                        ? 'bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white' 
-                                        : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-neutral-400'
-                                    }`}
-                                >
-                                    {r}
-                                </button>
-                            ))}
-                        </motion.div>
-                    )}
-
-                </AnimatePresence>
-             </div>
-             
-             {/* Selected Product Display (Controlled by Sidebar) */}
-             <div className="px-3 py-1.5 bg-cameroon-green/10 dark:bg-cameroon-green/20 border border-cameroon-green/20 rounded-lg">
-                <span className="text-xs font-bold text-cameroon-green">{selectedProduct || 'Aucun produit'}</span>
-             </div>
-
-             <button className="ml-auto p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
-                 <Download size={18} strokeWidth={2} />
-             </button>
+          <div className="px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-lg text-sm font-bold flex items-center gap-2">
+            <Beef size={16} />
+            Élevage
           </div>
-        </header>
-
-        {/* The Pivot Table - Ultra Flat & Clean */}
-        <div className="flex-1 overflow-hidden bg-white dark:bg-[#050505] relative flex flex-col">
-          <div className="absolute inset-0 overflow-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="sticky top-0 z-20 bg-white dark:bg-[#050505]">
-                <tr>
-                   <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest sticky left-0 z-30 bg-white dark:bg-[#050505] border-b border-r border-slate-200 dark:border-white/10 w-40">
-                    {pivotMode === 'years-rows' ? 'Période' : 'Zone (Dép.)'}
-                  </th>
-                  {cols.map((col) => (
-                    <th key={col} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest text-center border-b border-r border-slate-100 dark:border-white/5 min-w-[120px] last:border-r-0">
-                        {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                {rows.map((row) => (
-                  <tr key={row} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-                    <td className="p-4 font-medium text-slate-900 dark:text-white sticky left-0 z-10 bg-white dark:bg-[#050505] group-hover:bg-slate-50 dark:group-hover:bg-[#0A0A0A] transition-colors border-r border-slate-200 dark:border-white/10 text-sm">
-                        {row}
-                    </td>
-                    {cols.map((col) => {
-                      const dept = pivotMode === 'years-rows' ? col as string : row as string;
-                      const year = pivotMode === 'years-rows' ? row as number : col as number;
-                      const { val, status, trend, percent } = getCellData(dept, year);
-                      const maxValue = Math.max(...data.filter(d => d.product === selectedProduct).map(d => d.value || 0)) || 1;
-                      const percentageOfMax = val ? (val / maxValue) * 100 : 0;
-
-                      return (
-                        <td key={col} className="p-3 border-r border-slate-100 dark:border-white/5 last:border-r-0 text-center relative h-[72px] group/cell hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
-                          {/* Magnitude Bar */}
-                          {val && val > 0 && (
-                              <div 
-                                className="absolute bottom-0 left-0 h-1 bg-cameroon-green/20 dark:bg-cameroon-green/40 transition-all duration-500" 
-                                style={{ width: `${percentageOfMax}%` }}
-                              />
-                          )}
-                          
-                          <div className="flex flex-col items-center justify-center gap-1 h-full relative z-10">
-                            {status === 'unavailable' || val === null || val === undefined ? (
-                                <span className="text-[10px] font-medium text-slate-300 dark:text-neutral-700 uppercase tracking-wider">—</span>
-                            ) : val === 0 ? (
-                                <span className="text-sm font-medium text-slate-300 dark:text-neutral-700">0</span>
-                            ) : (
-                                <>
-                                    <span className={`text-sm font-semibold tabular-nums tracking-tight ${status === 'estimated' ? 'text-cameroon-yellow' : 'text-slate-900 dark:text-neutral-200'}`}>
-                                        {val.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}
-                                        {status === 'estimated' && '*'}
-                                    </span>
-                                    
-                                    {/* Minimalist Trend Indicator */}
-                                    {trend !== 'stable' && (
-                                        <div className={`flex items-center text-[10px] font-medium gap-0.5 px-1.5 py-0.5 rounded-full ${
-                                            trend === 'up' 
-                                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' 
-                                            : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
-                                        }`}>
-                                            {trend === 'up' ? <ArrowUpRight size={10} strokeWidth={3} /> : <ArrowDownRight size={10} strokeWidth={3} />}
-                                            <span>{Math.abs(percent).toFixed(0)}%</span>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-bold flex items-center gap-2">
+            <Fish size={16} />
+            Pêche
           </div>
         </div>
       </div>
     </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSANT PRINCIPAL - Routage selon le thème
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const TabularView = ({ selectedProduct, activeTheme, years, selectedIndicator = 'Production' }: TabularViewProps) => {
+  if (activeTheme === 'overview') {
+    return <OverviewTabularView />;
+  }
+  
+  if (activeTheme === 'peche') {
+    return <PecheTabularView />;
+  }
+  
+  if (activeTheme === 'elevage') {
+    return <ElevageTabularView product={selectedProduct} initialYear={years[0]} />;
+  }
+  
+  // Agriculture (par défaut)
+  return (
+    <AgricultureTabularView 
+      product={selectedProduct} 
+      indicator={selectedIndicator} 
+      initialYear={years[0]} 
+    />
   );
 };
