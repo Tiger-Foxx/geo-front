@@ -780,6 +780,20 @@ const PECHE_LABELS: Record<string, string> = {
   'prod_totale': 'Total',
 };
 
+// Unités pour chaque indicateur pêche
+const PECHE_UNITS: Record<string, string> = {
+  'etangs': 'unités',
+  'fumoirs': 'unités',
+  'halls_vente': 'unités',
+  'bacs': 'unités',
+  'cages': 'unités',
+  'prod_industrielle': 't',
+  'prod_continentale': 't', 
+  'prod_artisanale': 't',
+  'aquaculture': 't',
+  'prod_totale': 't',
+};
+
 const PECHE_ICONS: Record<string, typeof Fish> = {
   'etangs': Waves,
   'fumoirs': Building2,
@@ -1075,7 +1089,7 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
                           <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10">Année</th>
                           {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => (
                             <th key={key} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-right border-b border-slate-200 dark:border-white/10">
-                              {PECHE_LABELS[key]}
+                              {PECHE_LABELS[key]} <span className="text-slate-400 font-normal">({PECHE_UNITS[key]})</span>
                             </th>
                           ))}
                         </tr>
@@ -1096,6 +1110,7 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
                             {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => (
                               <td key={key} className="p-3 text-right text-sm tabular-nums text-slate-700 dark:text-neutral-300">
                                 {(row as any)[key]?.toLocaleString('fr-FR') || '—'}
+                                {(row as any)[key] && <span className="text-[10px] text-slate-400 ml-0.5">{PECHE_UNITS[key]}</span>}
                               </td>
                             ))}
                           </tr>
@@ -1189,6 +1204,7 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
                                 <div className="flex flex-col items-center gap-1">
                                   <Icon size={14} className="text-teal-400" />
                                   <span>{PECHE_LABELS[inf] || inf}</span>
+                                  <span className="text-[9px] text-slate-400 dark:text-neutral-600 font-normal normal-case">({PECHE_UNITS[inf] || 'unités'})</span>
                                 </div>
                               </th>
                             );
