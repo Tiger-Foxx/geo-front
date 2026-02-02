@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { REGIONS, MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, Users, AlertCircle, Database, Wheat, Beef, Search, X } from 'lucide-react';
+import {  MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
+import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, AlertCircle, Database, Wheat, Beef, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGeoServerFilters, usePecheData } from '../hooks/useGeoServer';
 import GeoServerAPI from '../services/geoserver';
@@ -1162,7 +1162,7 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
                                     {row.valeur?.toLocaleString('fr-FR') || '—'}
                                   </td>
                                   <td className="p-3 text-xs text-slate-400 dark:text-neutral-600 italic">
-                                    {row.note || '—'}
+                                    {'—'}
                                   </td>
                                 </tr>
                               );
