@@ -46,8 +46,8 @@ const log = {
 // En prod, utiliser l'URL directe (CORS configuré sur le serveur)
 const isDev = import.meta.env.DEV;
 const GEOSERVER_BASE = isDev 
-  ? '/geoserver'  // Proxy Vite → http://130.127.134.108:8080/geoserver
-  : 'http://130.127.134.108:8080/geoserver';
+  ? '/geoserver'  // Proxy Vite → https://clnode321.clemson.cloudlab.us/geoserver
+  : 'https://clnode321.clemson.cloudlab.us/geoserver';
 
 export const GEOSERVER_CONFIG = {
   baseUrl: GEOSERVER_BASE,
