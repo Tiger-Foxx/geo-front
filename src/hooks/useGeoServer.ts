@@ -243,7 +243,12 @@ interface UsePecheDataResult {
   refetch: () => void;
 }
 
-export function usePecheData(year: number = 2021): UsePecheDataResult {
+interface UsePecheDataParams {
+  year?: number;
+  enabled?: boolean;
+}
+
+export function usePecheData({ year = 2021, enabled = true }: UsePecheDataParams = {}): UsePecheDataResult {
   const [national, setNational] = useState<AsyncState<WFSFeatureCollection<PecheNationalProperties>>>({
     data: null,
     loading: false,
@@ -261,6 +266,8 @@ export function usePecheData(year: number = 2021): UsePecheDataResult {
   });
 
   const fetchAll = useCallback(async () => {
+    if (!enabled) return;
+    
     // National data (all years for evolution)
     setNational(prev => ({ ...prev, loading: true }));
     GeoServerAPI.peche.getNationalData()
@@ -278,7 +285,7 @@ export function usePecheData(year: number = 2021): UsePecheDataResult {
     GeoServerAPI.peche.getProdDepartement(year)
       .then(data => setProdDepartement({ data, loading: false, error: null }))
       .catch(error => setProdDepartement({ data: null, loading: false, error }));
-  }, [year]);
+  }, [year, enabled]);
 
   useEffect(() => {
     fetchAll();

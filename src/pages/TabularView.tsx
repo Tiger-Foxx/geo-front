@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { REGIONS, MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
 import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, Users, AlertCircle, Database, Wheat, Beef, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useGeoServerFilters } from '../hooks/useGeoServer';
+import { useGeoServerFilters, usePecheData } from '../hooks/useGeoServer';
 import GeoServerAPI from '../services/geoserver';
 import { DATA_MODE } from '../config';
 
@@ -762,19 +762,13 @@ const ElevageTabularView = ({ initialYear }: { product: string; initialYear: num
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// VUE TABULAIRE PÊCHE (conservée avec mock)
+// VUE TABULAIRE PÊCHE - Données GeoServer
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type PecheDataDimension = 'production' | 'infrastructure';
 
 const PECHE_LABELS: Record<string, string> = {
-  'peche_artisanale_maritime': 'Pêche Artisanale Maritime',
-  'peche_continentale': 'Pêche Continentale', 
-  'peche_industrielle': 'Pêche Industrielle',
-  'aquaculture': 'Aquaculture',
-  'production_totale': 'Production Totale',
-  'nb_pisciculteurs': 'Pisciculteurs',
-  'etangs_actifs': 'Étangs Actifs',
+  'etangs': 'Étangs',
   'fumoirs': 'Fumoirs',
   'halls_vente': 'Halls de Vente',
   'bacs': 'Bacs',
@@ -782,17 +776,12 @@ const PECHE_LABELS: Record<string, string> = {
   'prod_industrielle': 'Industrielle',
   'prod_continentale': 'Continentale', 
   'prod_artisanale': 'Artisanale',
+  'aquaculture': 'Aquaculture',
   'prod_totale': 'Total',
 };
 
 const PECHE_ICONS: Record<string, typeof Fish> = {
-  'peche_artisanale_maritime': Anchor,
-  'peche_continentale': Waves,
-  'peche_industrielle': Factory,
-  'aquaculture': Fish,
-  'production_totale': BarChart3,
-  'nb_pisciculteurs': Users,
-  'etangs_actifs': Waves,
+  'etangs': Waves,
   'fumoirs': Building2,
   'halls_vente': Warehouse,
   'bacs': Layers,
@@ -800,29 +789,99 @@ const PECHE_ICONS: Record<string, typeof Fish> = {
   'prod_industrielle': Factory,
   'prod_continentale': Waves,
   'prod_artisanale': Anchor,
+  'aquaculture': Fish,
   'prod_totale': BarChart3,
 };
 
-const PecheTabularView = () => {
-  const availableYears = useMemo(() => MOCK_DB.peche.national.map(d => d.annee).sort((a, b) => b - a), []);
+interface PecheTabularViewProps {
+  initialYear: number;
+}
+
+const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
+  const geoServerFilters = useGeoServerFilters();
+  const useBackend = DATA_MODE === 'geoserver' && !geoServerFilters.error;
   
-  const [selectedYear, setSelectedYear] = useState<number>(availableYears[0] || 2021);
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear);
   const [dimension, setDimension] = useState<PecheDataDimension>('production');
   const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => setIsLoading(false), 300);
-    return () => clearTimeout(timer);
-  }, [selectedYear, dimension]);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const nationalData = MOCK_DB.peche.national;
-  const regionalData = MOCK_DB.peche.regional;
-  const departementalData = MOCK_DB.peche.departemental;
+  // Charger les données GeoServer
+  const pecheData = usePecheData({ year: selectedYear, enabled: useBackend });
   
-  const nationalYearData = useMemo(() => nationalData.find(d => d.annee === selectedYear), [nationalData, selectedYear]);
-  const prevYearData = useMemo(() => nationalData.find(d => d.annee === selectedYear - 1), [nationalData, selectedYear]);
+  const isLoading = pecheData.national.loading || pecheData.infraRegional.loading || pecheData.prodDepartement.loading;
+
+  // Années disponibles depuis GeoServer
+  const availableYears = useMemo(() => {
+    if (geoServerFilters.pecheYearRange.years?.length > 0) {
+      return [...geoServerFilters.pecheYearRange.years].sort((a, b) => b - a);
+    }
+    // Fallback
+    return [2021, 2020, 2019, 2018, 2017, 2016, 2015];
+  }, [geoServerFilters.pecheYearRange.years]);
+
+  // Données nationales
+  const nationalData = useMemo(() => {
+    if (pecheData.national.data?.features?.length) {
+      return pecheData.national.data.features.map(f => f.properties);
+    }
+    return MOCK_DB.peche.national;
+  }, [pecheData.national.data]);
+
+  const nationalYearData = useMemo(() => 
+    nationalData.find(d => d.annee === selectedYear), 
+    [nationalData, selectedYear]
+  );
+  
+  const prevYearData = useMemo(() => 
+    nationalData.find(d => d.annee === selectedYear - 1), 
+    [nationalData, selectedYear]
+  );
+
+  // Données régionales (infrastructure)
+  const regionalData = useMemo(() => {
+    if (pecheData.infraRegional.data?.features?.length) {
+      return pecheData.infraRegional.data.features.map(f => ({
+        region: f.properties.nom_region,
+        annee: f.properties.annee,
+        etangs: f.properties.etangs,
+        fumoirs: f.properties.fumoirs,
+        halls_vente: f.properties.halls_vente,
+        bacs: f.properties.bacs,
+        cages: f.properties.cages,
+      }));
+    }
+    return MOCK_DB.peche.regional;
+  }, [pecheData.infraRegional.data]);
+
+  // Données départementales (production)
+  const departementalData = useMemo(() => {
+    if (pecheData.prodDepartement.data?.features?.length) {
+      return pecheData.prodDepartement.data.features.map(f => ({
+        departement: f.properties.nom_dep,
+        annee: f.properties.annee,
+        valeur: f.properties.prod_totale,
+        note: f.properties.note,
+      }));
+    }
+    return MOCK_DB.peche.departemental;
+  }, [pecheData.prodDepartement.data]);
+
+  // Filtrer les données départementales par recherche
+  const filteredDeptData = useMemo(() => {
+    if (!searchTerm) return departementalData;
+    return departementalData.filter(d => 
+      d.departement?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [departementalData, searchTerm]);
+
+  // Filtrer les données régionales par recherche
+  const filteredRegionalData = useMemo(() => {
+    if (!searchTerm) return regionalData;
+    return regionalData.filter(d => 
+      d.region?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [regionalData, searchTerm]);
 
   return (
     <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
@@ -840,13 +899,41 @@ const PecheTabularView = () => {
                 <Fish size={16} strokeWidth={2.5} />
               </div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pêche & Aquaculture</h1>
+              {useBackend && (
+                <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded">
+                  GeoServer
+                </span>
+              )}
             </div>
             <p className="text-slate-500 dark:text-neutral-500 text-sm font-medium pl-11">
-              Production par type & Infrastructures
+              {dimension === 'production' 
+                ? `Production nationale & départementale ${selectedYear}` 
+                : `Infrastructures régionales ${selectedYear}`
+              }
             </p>
           </div>
           
           <div className="flex flex-wrap gap-4 items-center">
+            {/* Search Input */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder={dimension === 'production' ? "Rechercher département..." : "Rechercher région..."}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-8 py-2 w-48 bg-slate-100 dark:bg-neutral-900 rounded-xl text-sm text-slate-700 dark:text-neutral-300 placeholder:text-slate-400 dark:placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-200 dark:hover:bg-neutral-800 rounded-full transition-colors"
+                >
+                  <X size={12} className="text-slate-400" />
+                </button>
+              )}
+            </div>
+
             {/* Year Selector */}
             <div className="relative z-50">
               <button
@@ -864,7 +951,7 @@ const PecheTabularView = () => {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
-                    className="absolute top-full mt-1 left-0 bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50"
+                    className="absolute top-full mt-1 left-0 bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50 max-h-48 overflow-y-auto"
                   >
                     {availableYears.map(year => (
                       <button
@@ -908,7 +995,7 @@ const PecheTabularView = () => {
                 }`}
               >
                 <Building2 size={14} />
-                <span>Infra</span>
+                <span>Infrastructures</span>
               </button>
             </div>
             
@@ -928,15 +1015,15 @@ const PecheTabularView = () => {
                 <section>
                   <div className="flex items-center gap-3 mb-4">
                     <Globe size={18} className="text-blue-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">National {selectedYear}</h2>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Production Nationale {selectedYear}</h2>
                   </div>
                   
                   {nationalYearData ? (
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                       {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => {
                         const Icon = PECHE_ICONS[key] || BarChart3;
-                        const val = nationalYearData[key];
-                        const prevVal = prevYearData?.[key];
+                        const val = (nationalYearData as any)[key];
+                        const prevVal = prevYearData ? (prevYearData as any)[key] : null;
                         const trend = prevVal ? ((val - prevVal) / prevVal * 100) : null;
                         
                         return (
@@ -952,7 +1039,7 @@ const PecheTabularView = () => {
                               </span>
                             </div>
                             <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                              {val.toLocaleString('fr-FR')}
+                              {val?.toLocaleString('fr-FR') || 'N/A'}
                               <span className="text-xs font-normal text-slate-400 ml-1">t</span>
                             </div>
                             {trend !== null && (
@@ -968,8 +1055,8 @@ const PecheTabularView = () => {
                       })}
                     </div>
                   ) : (
-                    <div className="p-8 text-center text-slate-400 dark:text-neutral-600">
-                      Pas de données pour {selectedYear}
+                    <div className="p-8 text-center text-slate-400 dark:text-neutral-600 border border-dashed border-slate-200 dark:border-white/10 rounded-xl">
+                      Pas de données nationales pour {selectedYear}
                     </div>
                   )}
                 </section>
@@ -978,10 +1065,10 @@ const PecheTabularView = () => {
                 <section>
                   <div className="flex items-center gap-3 mb-4">
                     <TrendingUp size={18} className="text-blue-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Évolution</h2>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Évolution Nationale</h2>
                   </div>
                   
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto border border-slate-200 dark:border-white/10 rounded-xl">
                     <table className="w-full text-left border-collapse min-w-[700px]">
                       <thead className="bg-slate-50 dark:bg-neutral-900">
                         <tr>
@@ -1008,7 +1095,7 @@ const PecheTabularView = () => {
                             </td>
                             {(['prod_artisanale', 'prod_continentale', 'prod_industrielle', 'aquaculture', 'prod_totale'] as const).map(key => (
                               <td key={key} className="p-3 text-right text-sm tabular-nums text-slate-700 dark:text-neutral-300">
-                                {row[key].toLocaleString('fr-FR')}
+                                {(row as any)[key]?.toLocaleString('fr-FR') || '—'}
                               </td>
                             ))}
                           </tr>
@@ -1018,110 +1105,135 @@ const PecheTabularView = () => {
                   </div>
                 </section>
 
-                {/* Départemental */}
+                {/* Départemental Production */}
                 <section>
-                  <div className="flex items-center gap-3 mb-4">
-                    <Layers size={18} className="text-purple-500" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Par Département</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Layers size={18} className="text-purple-500" />
+                      <h2 className="text-lg font-bold text-slate-800 dark:text-white">Production par Département</h2>
+                    </div>
+                    <span className="text-xs text-slate-400 dark:text-neutral-600">
+                      {filteredDeptData.length} département{filteredDeptData.length > 1 ? 's' : ''}
+                    </span>
                   </div>
                   
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {REGIONS.map(region => {
-                      const deptData = departementalData.filter(d => d.region === region).sort((a, b) => b.valeur - a.valeur);
-                      const regionTotal = deptData.reduce((sum, d) => sum + d.valeur, 0);
-                      const maxVal = Math.max(...deptData.map(d => d.valeur), 1);
-                      
-                      if (regionTotal === 0) return null;
-                      
-                      return (
-                        <div key={region} className="border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden">
-                          <div className="p-3 flex items-center justify-between bg-slate-50 dark:bg-neutral-900">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">{region}</span>
-                            <span className="text-sm font-bold text-purple-600 dark:text-purple-400 tabular-nums">
-                              {regionTotal.toLocaleString('fr-FR')} t
-                            </span>
-                          </div>
-                          <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[200px] overflow-y-auto custom-scrollbar">
-                            {deptData.map(dept => (
-                              <div key={dept.departement} className="p-2 px-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] relative">
-                                <div 
-                                  className="absolute left-0 top-0 bottom-0 bg-purple-100/50 dark:bg-purple-900/20"
-                                  style={{ width: `${(dept.valeur / maxVal) * 100}%` }}
-                                />
-                                <span className="relative z-10 flex-1 text-xs text-slate-600 dark:text-neutral-400">{dept.departement}</span>
-                                <span className="relative z-10 text-xs font-bold tabular-nums text-slate-900 dark:text-white">
-                                  {dept.valeur.toLocaleString('fr-FR')}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {filteredDeptData.length > 0 ? (
+                    <div className="overflow-x-auto border border-slate-200 dark:border-white/10 rounded-xl">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 dark:bg-neutral-900">
+                          <tr>
+                            <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10">Département</th>
+                            <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest text-right border-b border-slate-200 dark:border-white/10">Production (t)</th>
+                            <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                          {[...filteredDeptData]
+                            .sort((a, b) => (b.valeur || 0) - (a.valeur || 0))
+                            .map((row, idx) => {
+                              const maxVal = Math.max(...filteredDeptData.map(d => d.valeur || 0), 1);
+                              const pct = ((row.valeur || 0) / maxVal) * 100;
+                              
+                              return (
+                                <tr key={row.departement || idx} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors relative">
+                                  <td className="p-3 font-medium text-sm text-slate-900 dark:text-white relative">
+                                    <div 
+                                      className="absolute left-0 top-0 bottom-0 bg-purple-100/50 dark:bg-purple-900/20 transition-all"
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                    <span className="relative z-10">{row.departement}</span>
+                                  </td>
+                                  <td className="p-3 text-right text-sm tabular-nums font-bold text-purple-600 dark:text-purple-400">
+                                    {row.valeur?.toLocaleString('fr-FR') || '—'}
+                                  </td>
+                                  <td className="p-3 text-xs text-slate-400 dark:text-neutral-600 italic">
+                                    {row.note || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 dark:text-neutral-600 border border-dashed border-slate-200 dark:border-white/10 rounded-xl">
+                      {searchTerm ? `Aucun département correspondant à "${searchTerm}"` : 'Pas de données départementales'}
+                    </div>
+                  )}
                 </section>
               </div>
             )}
 
             {dimension === 'infrastructure' && (
               <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Building2 size={18} className="text-teal-500" />
-                  <h2 className="text-lg font-bold text-slate-800 dark:text-white">Infrastructures par Région</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Building2 size={18} className="text-teal-500" />
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Infrastructures par Région</h2>
+                  </div>
+                  <span className="text-xs text-slate-400 dark:text-neutral-600">
+                    {filteredRegionalData.length} région{filteredRegionalData.length > 1 ? 's' : ''}
+                  </span>
                 </div>
                 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[800px]">
-                    <thead className="bg-slate-50 dark:bg-neutral-900">
-                      <tr>
-                        <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10 sticky left-0 bg-slate-50 dark:bg-neutral-900 z-10">Région</th>
-                        {PECHE_INFRA_TYPES.map(inf => {
-                          const Icon = PECHE_ICONS[inf] || Building2;
+                {filteredRegionalData.length > 0 ? (
+                  <div className="overflow-x-auto border border-slate-200 dark:border-white/10 rounded-xl">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
+                      <thead className="bg-slate-50 dark:bg-neutral-900">
+                        <tr>
+                          <th className="p-4 font-semibold text-slate-500 dark:text-neutral-500 text-[11px] uppercase tracking-widest border-b border-slate-200 dark:border-white/10 sticky left-0 bg-slate-50 dark:bg-neutral-900 z-10">Région</th>
+                          {PECHE_INFRA_TYPES.map(inf => {
+                            const Icon = PECHE_ICONS[inf] || Building2;
+                            return (
+                              <th key={inf} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10 min-w-[100px]">
+                                <div className="flex flex-col items-center gap-1">
+                                  <Icon size={14} className="text-teal-400" />
+                                  <span>{PECHE_LABELS[inf] || inf}</span>
+                                </div>
+                              </th>
+                            );
+                          })}
+                          <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                        {[...filteredRegionalData].sort((a, b) => {
+                          const totalA = PECHE_INFRA_TYPES.reduce((sum, k) => sum + ((a as any)[k] || 0), 0);
+                          const totalB = PECHE_INFRA_TYPES.reduce((sum, k) => sum + ((b as any)[k] || 0), 0);
+                          return totalB - totalA;
+                        }).map(row => {
+                          const total = PECHE_INFRA_TYPES.reduce((sum, k) => sum + ((row as any)[k] || 0), 0);
+                          
                           return (
-                            <th key={inf} className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10 min-w-[100px]">
-                              <div className="flex flex-col items-center gap-1">
-                                <Icon size={14} className="text-teal-400" />
-                                <span>{PECHE_LABELS[inf] || inf}</span>
-                              </div>
-                            </th>
-                          );
-                        })}
-                        <th className="p-3 font-semibold text-slate-500 dark:text-neutral-500 text-[10px] uppercase tracking-widest text-center border-b border-slate-200 dark:border-white/10">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                      {[...regionalData].sort((a, b) => {
-                        const totalA = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (a[k] || 0), 0);
-                        const totalB = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (b[k] || 0), 0);
-                        return totalB - totalA;
-                      }).map(row => {
-                        const total = PECHE_INFRA_TYPES.reduce((sum, k) => sum + (row[k] || 0), 0);
-                        
-                        return (
-                          <tr key={row.region} className="hover:bg-teal-50/50 dark:hover:bg-teal-900/10 transition-colors">
-                            <td className="p-4 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-white/10 text-sm sticky left-0 bg-white dark:bg-[#050505] z-10">
-                              {row.region}
-                            </td>
-                            {PECHE_INFRA_TYPES.map(inf => (
-                              <td key={inf} className="p-3 text-center">
-                                <span className={`text-sm font-semibold tabular-nums ${
-                                  row[inf] > 0 ? 'text-slate-800 dark:text-neutral-200' : 'text-slate-300 dark:text-neutral-700'
-                                }`}>
-                                  {row[inf]?.toLocaleString('fr-FR') || '—'}
+                            <tr key={row.region} className="hover:bg-teal-50/50 dark:hover:bg-teal-900/10 transition-colors">
+                              <td className="p-4 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-white/10 text-sm sticky left-0 bg-white dark:bg-[#050505] z-10">
+                                {row.region}
+                              </td>
+                              {PECHE_INFRA_TYPES.map(inf => (
+                                <td key={inf} className="p-3 text-center">
+                                  <span className={`text-sm font-semibold tabular-nums ${
+                                    (row as any)[inf] > 0 ? 'text-slate-800 dark:text-neutral-200' : 'text-slate-300 dark:text-neutral-700'
+                                  }`}>
+                                    {(row as any)[inf]?.toLocaleString('fr-FR') || '—'}
+                                  </span>
+                                </td>
+                              ))}
+                              <td className="p-3 text-center">
+                                <span className="inline-flex items-center justify-center min-w-[50px] px-2 py-1 rounded-lg bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-sm font-bold">
+                                  {total.toLocaleString('fr-FR')}
                                 </span>
                               </td>
-                            ))}
-                            <td className="p-3 text-center">
-                              <span className="inline-flex items-center justify-center min-w-[50px] px-2 py-1 rounded-lg bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-sm font-bold">
-                                {total.toLocaleString('fr-FR')}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-400 dark:text-neutral-600 border border-dashed border-slate-200 dark:border-white/10 rounded-xl">
+                    {searchTerm ? `Aucune région correspondant à "${searchTerm}"` : 'Pas de données d\'infrastructure'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1176,7 +1288,7 @@ export const TabularView = ({ selectedProduct, activeTheme, years, selectedIndic
   }
   
   if (activeTheme === 'peche') {
-    return <PecheTabularView />;
+    return <PecheTabularView initialYear={years[0]} />;
   }
   
   if (activeTheme === 'elevage') {

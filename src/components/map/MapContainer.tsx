@@ -53,6 +53,8 @@ interface MapContainerProps {
   adminLayers?: AdminLayersData;
   /** Configuration des couches (visibilité, ordre) */
   layerConfig?: LayerConfig[];
+  /** Thème actif (overview, agriculture, élevage, pêche) */
+  activeTheme?: 'overview' | 'agriculture' | 'elevage' | 'peche';
 }
 
 const BASEMAP_URLS: Record<BasemapType, string> = {
@@ -197,7 +199,7 @@ const MouseTracker = ({ onMouseMove }: { onMouseMove: (pos: { x: number; y: numb
 export const MapContainer = ({ 
   data, year, product, indicator, basemap = 'osm', adminLevel = 'region', 
   flyToLocation, onFeatureClick, onMapReady, regionsGeoJSON,
-  adminLayers, layerConfig 
+  adminLayers, layerConfig, activeTheme = 'overview'
 }: MapContainerProps) => {
   const center: [number, number] = [7.3697, 12.3547];
   const zoom = 6;
@@ -315,6 +317,8 @@ export const MapContainer = ({
     
     if (map.size > 0) {
       console.log('[MapContainer] 📊 Données agrégées:', map.size, 'zones');
+      // DEBUG: Afficher les clés réelles dans aggregatedData
+      console.log('[MapContainer] 🔑 Clés agrégées (premières 10):', Array.from(map.keys()).slice(0, 10));
     }
     
     return map;
@@ -364,6 +368,27 @@ export const MapContainer = ({
         });
         
         console.log(`[MapContainer] ✅ Jointures ${layerName}: ${matchCount}/${features.length} (${Math.round(matchCount/features.length*100)}%)`);
+        
+        // DEBUG COMPLET: Comparer les clés des données vs les noms admin
+        const dataKeys = Array.from(aggregatedData.keys()).sort();
+        const adminNames = features.slice(0, 20).map((f: any) => {
+          const p = f.properties;
+          return adminLevel === 'department' 
+            ? getCanonicalRegionName(p.adm2_name1 || p.adm2_name || '')
+            : getCanonicalRegionName(p.adm1_name1 || p.adm1_name || '');
+        }).sort();
+        
+        console.log('[MapContainer] 🔑 Clés données (toutes):', dataKeys);
+        console.log('[MapContainer] 🗺️ Noms admin GeoJSON (20 premiers):', adminNames);
+        
+        // Identifier les non-correspondances exactes
+        const missingInData = adminNames.filter(n => !dataKeys.includes(n));
+        const missingInAdmin = dataKeys.filter(k => !adminNames.includes(k));
+        if (missingInData.length > 0 || missingInAdmin.length > 0) {
+          console.log('[MapContainer] ❌ Présents dans admin mais PAS dans données:', missingInData.slice(0, 5));
+          console.log('[MapContainer] ❌ Présents dans données mais PAS dans admin:', missingInAdmin);
+        }
+        
         if (unmatchedFeatures.length > 0 && unmatchedFeatures.length <= 5) {
           console.log('[MapContainer] ⚠️ Sans données:', unmatchedFeatures.join(', '));
         } else if (unmatchedFeatures.length > 5) {
@@ -402,7 +427,7 @@ export const MapContainer = ({
       ? [props.adm2_name1, props.adm2_name, props.adm2_name2, props.adm2_name3, props.adm2_ref_name1, props.nom, props.departement]
       : [props.adm1_name1, props.adm1_name, props.adm1_name2, props.adm1_name3, props.adm1_ref_name1, props.nom_region, props.name, props.nom, props.region];
     
-    // Essayer chaque variante jusqu'à trouver une correspondance
+    // Essayer chaque variante jusqu'à trouver une correspondance EXACTE
     for (const name of nameVariants) {
       if (!name) continue;
       const canonical = getCanonicalRegionName(name);
@@ -412,14 +437,18 @@ export const MapContainer = ({
       }
     }
     
-    // Essai supplémentaire: recherche partielle (le nom de la feature contient une clé de données ou vice versa)
+    // Essai supplémentaire: recherche FUZZY sur toutes les clés
     const displayName = nameVariants.find(n => n) || 'Inconnu';
     const normalizedDisplay = getCanonicalRegionName(displayName);
     
-    // Chercher si une clé de données correspond partiellement
+    // Chercher correspondance partielle OU avec distance d'édition minimale
     for (const [key, dataValue] of currentData.entries()) {
-      // Match partiel: "centre" dans "centre region" ou "adamaoua" dans "adamaoua region"
+      // Match partiel bidirectionnel
       if (normalizedDisplay.includes(key) || key.includes(normalizedDisplay)) {
+        return { data: dataValue, displayName, canonical: key };
+      }
+      // Match par début de chaîne (pour gérer "Kadey" vs "Kadéy" etc.)
+      if (key.startsWith(normalizedDisplay.substring(0, 4)) || normalizedDisplay.startsWith(key.substring(0, 4))) {
         return { data: dataValue, displayName, canonical: key };
       }
     }
@@ -453,8 +482,18 @@ export const MapContainer = ({
   const onEachFeature = useCallback((feature: any, layer: L.Layer) => {
     layer.on({
       mouseover: (e: L.LeafletMouseEvent) => {
-        const { data: featureInfo, displayName } = findFeatureData(feature);
+        const { data: featureInfo, displayName, canonical } = findFeatureData(feature);
         const props = feature.properties;
+        
+        // DEBUG: Afficher les détails du hover
+        console.log('[MapContainer] 🖱️ Hover:', {
+          displayName,
+          canonical,
+          found: !!featureInfo,
+          value: featureInfo?.value,
+          refSize: aggregatedDataRef.current.size,
+          refKeys: Array.from(aggregatedDataRef.current.keys()).slice(0, 5)
+        });
         
         setTooltipData({
           name: displayName,
@@ -480,7 +519,7 @@ export const MapContainer = ({
         if (onFeatureClick) onFeatureClick(feature);
       }
     });
-  }, [findFeatureData, getFeatureStyle, onFeatureClick]);
+  }, [findFeatureData, getFeatureStyle, onFeatureClick, aggregatedData.size]); // aggregatedData.size force la recréation quand les données changent
 
   return (
     <>
@@ -502,6 +541,25 @@ export const MapContainer = ({
                   {isGeoJSONLoading ? 'Polygones administratifs' : isDataLoading ? `${product} - ${indicator}` : 'Connexion au serveur'}
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Message: Sélectionnez un produit (en mode thématique sans sélection) */}
+        {activeTheme !== 'overview' && !product && !isMapLoading && !isGeoJSONLoading && (
+          <div className="absolute inset-0 z-[999] flex items-center justify-center pointer-events-none">
+            <div className="glass-panel rounded-2xl border border-cameroon-green/20 shadow-2xl p-8 text-center max-w-sm mx-4 pointer-events-auto">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-cameroon-green/10 flex items-center justify-center">
+                <svg className="w-8 h-8 text-cameroon-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">
+                Sélectionnez {activeTheme === 'agriculture' ? 'une culture' : activeTheme === 'elevage' ? 'une filière' : 'un type'}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-neutral-400">
+                Choisissez dans le panneau latéral pour afficher les données sur la carte
+              </p>
             </div>
           </div>
         )}

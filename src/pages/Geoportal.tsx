@@ -7,7 +7,7 @@ import { Search, Play, Pause, ChevronRight, Layers, Map as MapIcon, Globe, Calen
 import { CROPS, LIVESTOCK_FILIERES, FISHERIES, PECHE_INFRA_TYPES, AGRI_INDICATORS, generateMockData } from '../data/mockData';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import L from 'leaflet';
-import { useGeoServerFilters, useAgricultureData, useElevageData, useAdminGeoJSON } from '../hooks/useGeoServer';
+import { useGeoServerFilters, useAgricultureData, useElevageData, usePecheData, useAdminGeoJSON } from '../hooks/useGeoServer';
 import { DATA_MODE } from '../config';
 import type { DataPoint } from '../data/mockData';
 
@@ -86,7 +86,13 @@ export const Geoportal = () => {
       filiere: selectedProduct || undefined,
       year: years[0],
       level: 'regional',
-      enabled: useBackend && activeTheme === 'elevage'
+      enabled: useBackend && activeTheme === 'elevage' && !!selectedProduct
+    });
+
+    // ─── DONNÉES PÊCHE GEOSERVER ─────────────────────────────────────────────
+    const pecheData = usePecheData({
+      year: years[0],
+      enabled: useBackend && activeTheme === 'peche' && !!selectedProduct
     });
     
     // ─── ÉTAT DE CHARGEMENT GLOBAL ─────────────────────────────────────────────
@@ -94,8 +100,9 @@ export const Geoportal = () => {
       if (activeTheme === 'overview') return false;
       if (activeTheme === 'agriculture') return agricultureData.loading;
       if (activeTheme === 'elevage') return elevageData.loading;
+      if (activeTheme === 'peche') return pecheData.infraRegional.loading || pecheData.prodDepartement.loading;
       return false;
-    }, [activeTheme, agricultureData.loading, elevageData.loading]);
+    }, [activeTheme, agricultureData.loading, elevageData.loading, pecheData.infraRegional.loading, pecheData.prodDepartement.loading]);
 
     // ─── GÉOMÉTRIES RÉFÉRENTIELLES (toutes les couches admin) ──────────────
     const regionsGeoJSON = useAdminGeoJSON('regions');
@@ -131,32 +138,21 @@ export const Geoportal = () => {
       chefsLieuxArrond: chefsLieuxArrondGeoJSON.data
     }), [regionsGeoJSON.data, departementsGeoJSON.data, arrondissementsGeoJSON.data, chefsLieuxDepGeoJSON.data, chefsLieuxArrondGeoJSON.data]);
 
-    // ─── SYNC PRODUIT SÉLECTIONNÉ AVEC GEOSERVER ────────────────────────────
-    // Dès que les vrais produits GeoServer arrivent, synchroniser la sélection
+    // ─── SYNC INDICATEUR AVEC GEOSERVER ────────────────────────────
+    // Synchronise UNIQUEMENT l'indicateur et l'année, PAS le produit (choix utilisateur)
     useEffect(() => {
       if (!useBackend) return;
       
-      if (activeTheme === 'agriculture' && geoServerFilters.products.length > 0) {
-        // Si le produit actuel n'est pas dans la liste GeoServer, prendre le premier
-        if (!geoServerFilters.products.includes(selectedProduct || '')) {
-          const firstProduct = geoServerFilters.products[0];
-          console.log('%c[Geoportal] 🔄 Sync produit avec GeoServer:', 'color: #10B981; font-weight: bold;', firstProduct);
-          setSelectedProduct(firstProduct);
-        }
-        // SYNC INDICATEUR AUSSI - Les vrais indicateurs sont différents!
-        if (geoServerFilters.indicators.length > 0 && !geoServerFilters.indicators.includes(selectedIndicator)) {
+      if (activeTheme === 'agriculture' && geoServerFilters.indicators.length > 0) {
+        // SYNC INDICATEUR UNIQUEMENT - pas de sélection automatique du produit
+        if (!geoServerFilters.indicators.includes(selectedIndicator)) {
           const firstIndicator = geoServerFilters.indicators[0];
           console.log('%c[Geoportal] 🔄 Sync indicateur avec GeoServer:', 'color: #10B981; font-weight: bold;', firstIndicator);
           setSelectedIndicator(firstIndicator);
         }
-      } else if (activeTheme === 'elevage' && geoServerFilters.filieres.length > 0) {
-        if (!geoServerFilters.filieres.includes(selectedProduct || '')) {
-          const firstFiliere = geoServerFilters.filieres[0];
-          console.log('%c[Geoportal] 🔄 Sync filière avec GeoServer:', 'color: #10B981; font-weight: bold;', firstFiliere);
-          setSelectedProduct(firstFiliere);
-        }
       }
-    }, [useBackend, activeTheme, geoServerFilters.products, geoServerFilters.filieres, geoServerFilters.indicators, selectedProduct, selectedIndicator]);
+      // Pour élevage: ne rien présélectionner non plus
+    }, [useBackend, activeTheme, geoServerFilters.indicators, selectedIndicator]);
 
     // Sync année avec les vraies plages GeoServer
     useEffect(() => {
@@ -203,8 +199,9 @@ export const Geoportal = () => {
               };
             case 'peche': 
               return { 
-                products: [...FISHERIES], 
-                indicators: ['Production', ...PECHE_INFRA_TYPES],
+                // Pour la pêche, les "produits" sont en fait les indicateurs cartographiables
+                products: ['Production Totale', 'Étangs', 'Fumoirs', 'Halls de vente', 'Bacs', 'Cages'],
+                indicators: ['Production', 'etangs', 'fumoirs', 'halls_vente', 'bacs', 'cages'],
                 minYear: useBackend ? geoServerFilters.pecheYearRange.min : 2015,
                 maxYear: useBackend ? geoServerFilters.pecheYearRange.max : 2021, 
                 defaultYear: useBackend ? geoServerFilters.pecheYearRange.max : 2021,
@@ -268,9 +265,10 @@ export const Geoportal = () => {
       const newConfig = getConfig();
       console.log('%c[Geoportal] 🔄 Changement thème vers', 'color: #8B5CF6;', newTheme, newConfig);
                       
-      setSelectedProduct(newConfig.products[0]);
+      // Ne PAS présélectionner de produit - attendre le choix utilisateur
+      setSelectedProduct(null);
       setSelectedIndicator(newConfig.indicator);
-            setAnalysisLevel(newConfig.level);
+      setAnalysisLevel(newConfig.level);
       setYears([newConfig.defaultYear]);
     };
     
@@ -332,6 +330,16 @@ export const Geoportal = () => {
             ? (props.departement || props.nom_dep || props.Departement || props.DEPARTEMENT || props.adm2_name1 || regionName)
             : regionName; // Si pas de dept, utiliser region (données régionales)
           
+          // DEBUG: Afficher les noms de départements des données GeoServer
+          if (idx < 3 && hasDeptData) {
+            console.log(`[Geoportal] 🏷️ Données dept #${idx}:`, {
+              raw_departement: props.departement,
+              raw_nom_dep: props.nom_dep,
+              extracted: deptName,
+              region: regionName
+            });
+          }
+          
           return {
             fnid: f.id || `gs-agri-${idx}`,
             region: regionName,
@@ -367,11 +375,59 @@ export const Geoportal = () => {
           };
         });
       }
+
+      // Si données GeoServer disponibles pour Pêche
+      if (useBackend && activeTheme === 'peche') {
+        const isInfraIndicator = PECHE_INFRA_TYPES.includes(selectedIndicator as any);
+        
+        // Infrastructure régionale (etangs, fumoirs, etc.)
+        if (isInfraIndicator && pecheData.infraRegional.data?.features?.length) {
+          console.log('[Geoportal] 🎣 Utilisation données GeoServer Pêche Infra:', pecheData.infraRegional.data.features.length, 'features');
+          
+          return pecheData.infraRegional.data.features.map((f, idx) => {
+            const props = f.properties as any;
+            const indicatorKey = selectedIndicator.toLowerCase().replace(/ /g, '_');
+            return {
+              fnid: f.id || `gs-peche-infra-${idx}`,
+              region: props.nom_region || 'Unknown',
+              department: props.nom_region || 'Unknown', // Niveau régional
+              product: selectedProduct || 'Infrastructure',
+              season_year: props.annee || years[0],
+              indicator: selectedIndicator,
+              value: props[indicatorKey] ?? null,
+              unit: 'unités',
+              status: 'confirmed' as const,
+              granularity: 'regional' as const
+            };
+          });
+        }
+        
+        // Production départementale
+        if (!isInfraIndicator && pecheData.prodDepartement.data?.features?.length) {
+          console.log('[Geoportal] 🎣 Utilisation données GeoServer Pêche Prod Dép:', pecheData.prodDepartement.data.features.length, 'features');
+          
+          return pecheData.prodDepartement.data.features.map((f, idx) => {
+            const props = f.properties as any;
+            return {
+              fnid: f.id || `gs-peche-prod-${idx}`,
+              region: 'Cameroun', // Pas de région dans v_peche_prod_departement
+              department: props.nom_dep || 'Unknown',
+              product: selectedProduct || 'Production',
+              season_year: props.annee || years[0],
+              indicator: 'Production',
+              value: props.prod_totale ?? null,
+              unit: 'tonnes',
+              status: 'confirmed' as const,
+              granularity: 'departmental' as const
+            };
+          });
+        }
+      }
       
       // Fallback Mock data
       console.log('[Geoportal] 📦 Utilisation données MOCK (backend:', useBackend, ', theme:', activeTheme, ')');
       return generateMockData();
-    }, [useBackend, activeTheme, agricultureData.data, elevageData.data, selectedProduct, selectedIndicator, years]);
+    }, [useBackend, activeTheme, agricultureData.data, elevageData.data, pecheData.infraRegional.data, pecheData.prodDepartement.data, selectedProduct, selectedIndicator, years]);
 
         // Détecter si les données agriculture sont régionales ou départementales
         const agricultureDataLevel = useMemo(() => {
@@ -410,9 +466,33 @@ export const Geoportal = () => {
             }
         }, [activeTheme, selectedIndicator, analysisLevel]);
   
+    // Mapping pour la pêche: label affiché → indicateur réel
+    const pecheIndicatorMap: Record<string, string> = {
+      'Production Totale': 'Production',
+      'Étangs': 'etangs',
+      'Fumoirs': 'fumoirs', 
+      'Halls de vente': 'halls_vente',
+      'Bacs': 'bacs',
+      'Cages': 'cages'
+    };
+
     // ACTIONS
     const handleProductSelect = (p: string) => {
         setSelectedProduct(p);
+        
+        // Pour la pêche, le "produit" sélectionné détermine l'indicateur
+        if (activeTheme === 'peche') {
+          const mappedIndicator = pecheIndicatorMap[p];
+          if (mappedIndicator) {
+            setSelectedIndicator(mappedIndicator);
+            // Ajuster automatiquement le niveau d'analyse
+            if (mappedIndicator === 'Production') {
+              setAnalysisLevel('department');
+            } else {
+              setAnalysisLevel('region'); // Infrastructure = niveau régional
+            }
+          }
+        }
     };
 
     const handleZoomIn = () => mapRef.current?.zoomIn();
@@ -999,6 +1079,7 @@ export const Geoportal = () => {
                         regionsGeoJSON={regionsGeoJSON.data}
                         adminLayers={adminLayersData}
                         layerConfig={layers}
+                        activeTheme={activeTheme}
                     />
 
                     {/* NEW MAP TOOLS - FLOATING RIGHT */}
