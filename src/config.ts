@@ -13,9 +13,9 @@ export const DATA_MODE: 'mock' | 'geoserver' = 'geoserver';
  * Configuration GeoServer
  */
 export const GEOSERVER = {
-  baseUrl: 'http://130.127.134.108:8080/geoserver',
+  baseUrl: 'https://clnode321.clemson.cloudlab.us/geoserver',
   workspace: 'geoportal',
-  timeout: 15000, // 15 secondes
+  timeout: 25000, // 25 secondes
 };
 
 /**
