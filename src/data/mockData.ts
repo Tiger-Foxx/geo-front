@@ -107,6 +107,7 @@ export interface PecheDepartementalProd {
   annee: 2021;
   valeur: number;
   unite: 'tonnes';
+  note?: string;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

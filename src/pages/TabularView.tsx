@@ -119,7 +119,7 @@ const exportToExcel = ({ filename, headers, rows, title, metadata }: ExportOptio
   htmlContent += '<tbody>';
   rows.forEach(row => {
     htmlContent += '<tr>';
-    row.forEach((cell, idx) => {
+    row.forEach((cell) => {
       const isNumber = typeof cell === 'number';
       const value = cell === null || cell === undefined ? '' : cell;
       htmlContent += `<td class="${isNumber ? 'number' : ''}">${value}</td>`;
