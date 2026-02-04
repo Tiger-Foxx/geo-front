@@ -522,6 +522,289 @@ export const Geoportal = () => {
             (mapRef.current as any).toggleFullscreen();
          }
     };
+
+    // ACTION: Print Map with Legend
+    const handlePrint = async () => {
+        if (!mapRef.current) return;
+        
+        const map = mapRef.current;
+        const mapContainer = map.getContainer();
+        const mapSize = map.getSize();
+        
+        // Afficher un indicateur de chargement
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'print-loading';
+        loadingOverlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 99999;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+        `;
+        loadingOverlay.innerHTML = `
+            <div style="background: white; padding: 24px 32px; border-radius: 12px; text-align: center; box-shadow: 0 25px 50px rgba(0,0,0,0.25);">
+                <div style="width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #056B32; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+                <div style="font-weight: 600; color: #1f2937;">Préparation de l'impression...</div>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Capture de la carte en cours</div>
+            </div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        `;
+        document.body.appendChild(loadingOverlay);
+
+        try {
+            // Créer un canvas pour dessiner manuellement
+            const canvas = document.createElement('canvas');
+            const scale = 2; // Haute résolution
+            canvas.width = mapSize.x * scale;
+            canvas.height = mapSize.y * scale;
+            const ctx = canvas.getContext('2d')!;
+            ctx.scale(scale, scale);
+            
+            // Fond de carte neutre (les tuiles externes ne sont pas exportables à cause de CORS)
+            ctx.fillStyle = '#e8f4f8';
+            ctx.fillRect(0, 0, mapSize.x, mapSize.y);
+            
+            // Dessiner une grille subtile comme fond
+            ctx.strokeStyle = '#d1e3e8';
+            ctx.lineWidth = 0.5;
+            const gridSize = 50;
+            for (let x = 0; x < mapSize.x; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, mapSize.y);
+                ctx.stroke();
+            }
+            for (let y = 0; y < mapSize.y; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(mapSize.x, y);
+                ctx.stroke();
+            }
+            
+            // Dessiner les SVG (polygones GeoJSON) - C'est le contenu important !
+            const svgPanes = mapContainer.querySelectorAll('.leaflet-overlay-pane svg, .leaflet-pane svg');
+            const mapRect = mapContainer.getBoundingClientRect();
+            
+            for (const svg of Array.from(svgPanes)) {
+                const svgElement = svg as SVGSVGElement;
+                const svgRect = svgElement.getBoundingClientRect();
+                
+                // Cloner le SVG et ajouter les styles inline
+                const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+                
+                // S'assurer que le SVG a des dimensions explicites
+                clonedSvg.setAttribute('width', String(svgRect.width));
+                clonedSvg.setAttribute('height', String(svgRect.height));
+                
+                // Forcer les styles inline sur tous les paths
+                const paths = clonedSvg.querySelectorAll('path');
+                paths.forEach((path) => {
+                    const computedStyle = window.getComputedStyle(path);
+                    const fill = path.getAttribute('fill') || computedStyle.fill;
+                    const stroke = path.getAttribute('stroke') || computedStyle.stroke;
+                    const strokeWidth = path.getAttribute('stroke-width') || computedStyle.strokeWidth;
+                    const fillOpacity = path.getAttribute('fill-opacity') || computedStyle.fillOpacity;
+                    const strokeOpacity = path.getAttribute('stroke-opacity') || computedStyle.strokeOpacity;
+                    
+                    if (fill && fill !== 'none') path.setAttribute('fill', fill);
+                    if (stroke && stroke !== 'none') path.setAttribute('stroke', stroke);
+                    if (strokeWidth) path.setAttribute('stroke-width', strokeWidth);
+                    if (fillOpacity) path.setAttribute('fill-opacity', fillOpacity);
+                    if (strokeOpacity) path.setAttribute('stroke-opacity', strokeOpacity);
+                });
+                
+                // Sérialiser le SVG
+                const svgData = new XMLSerializer().serializeToString(clonedSvg);
+                const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const svgUrl = URL.createObjectURL(svgBlob);
+                
+                // Charger comme image
+                await new Promise<void>((resolve) => {
+                    const svgImg = new Image();
+                    svgImg.onload = () => {
+                        const x = svgRect.left - mapRect.left;
+                        const y = svgRect.top - mapRect.top;
+                        ctx.drawImage(svgImg, x, y);
+                        URL.revokeObjectURL(svgUrl);
+                        resolve();
+                    };
+                    svgImg.onerror = () => {
+                        console.warn('SVG load error');
+                        URL.revokeObjectURL(svgUrl);
+                        resolve();
+                    };
+                    svgImg.src = svgUrl;
+                });
+            }
+            
+            // Ajouter une bordure autour de la carte
+            ctx.strokeStyle = '#056B32';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, mapSize.x - 2, mapSize.y - 2);
+
+            const mapImageUrl = canvas.toDataURL('image/png', 1.0);
+
+            // Informations contextuelles
+            const themeLabels: Record<string, string> = {
+                'overview': 'Divisions Administratives',
+                'agriculture': 'Agriculture',
+                'elevage': 'Élevage',
+                'peche': 'Pêche'
+            };
+            
+            const printTitle = activeTheme === 'overview' 
+                ? 'Carte Administrative du Cameroun'
+                : `Carte de ${themeLabels[activeTheme]} - ${selectedProduct || ''}`;
+            
+            const printSubtitle = activeTheme !== 'overview' && selectedProduct
+                ? `${selectedIndicator} • Année ${years[0]}`
+                : 'République du Cameroun';
+
+            // Construire la légende HTML si analyse thématique active
+            let legendHTML = '';
+            if (activeTheme !== 'overview' && selectedProduct) {
+                legendHTML = `
+                    <div style="margin-top: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px;">Légende - ${selectedIndicator}</h4>
+                        <div style="height: 16px; background: linear-gradient(to right, #fef3c7, #fcd34d, #4ade80, #059669); border-radius: 4px; margin-bottom: 8px;"></div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; font-family: monospace;">
+                            <span>Faible</span>
+                            <span>Moyen</span>
+                            <span>Élevé</span>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 16px; font-size: 10px; color: #94a3b8;">
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="display: inline-block; width: 12px; height: 12px; border: 2px dashed #cbd5e1; background: #f1f5f9; border-radius: 2px;"></span>
+                                <span>Données indisponibles</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Créer la fenêtre d'impression
+            const printWindow = window.open('', '_blank', 'width=1200,height=900');
+            if (!printWindow) {
+                alert('Veuillez autoriser les pop-ups pour imprimer la carte.');
+                loadingOverlay.remove();
+                return;
+            }
+
+            // HTML de la page d'impression avec l'image capturée
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>${printTitle}</title>
+                    <style>
+                        @page { size: A4 landscape; margin: 15mm; }
+                        @media print {
+                            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        }
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            margin: 0;
+                            padding: 20px;
+                            background: white;
+                        }
+                        .print-header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: flex-start;
+                            margin-bottom: 20px;
+                            padding-bottom: 15px;
+                            border-bottom: 2px solid #056B32;
+                        }
+                        .print-title {
+                            font-size: 24px;
+                            font-weight: 700;
+                            color: #1e293b;
+                            margin: 0 0 4px 0;
+                        }
+                        .print-subtitle {
+                            font-size: 14px;
+                            color: #64748b;
+                            margin: 0;
+                        }
+                        .print-meta {
+                            text-align: right;
+                            font-size: 11px;
+                            color: #94a3b8;
+                        }
+                        .print-badge {
+                            display: inline-block;
+                            padding: 4px 10px;
+                            background: #056B32;
+                            color: white;
+                            border-radius: 4px;
+                            font-size: 11px;
+                            font-weight: 600;
+                            margin-bottom: 8px;
+                        }
+                        .map-container {
+                            border: 1px solid #e2e8f0;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                        }
+                        .map-container img {
+                            display: block;
+                            width: 100%;
+                            height: auto;
+                        }
+                        .print-footer {
+                            margin-top: 20px;
+                            padding-top: 15px;
+                            border-top: 1px solid #e2e8f0;
+                            display: flex;
+                            justify-content: space-between;
+                            font-size: 10px;
+                            color: #94a3b8;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="print-header">
+                        <div>
+                            <h1 class="print-title">${printTitle}</h1>
+                            <p class="print-subtitle">${printSubtitle}</p>
+                        </div>
+                        <div class="print-meta">
+                            <div class="print-badge">GÉOPORTAIL CAMEROUN</div>
+                            <div>Imprimé le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                            <div>à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="map-container">
+                        <img src="${mapImageUrl}" alt="Carte du Cameroun" />
+                    </div>
+                    
+                    ${legendHTML}
+                    
+                    <div class="print-footer">
+                        <div>Source: GeoServer PostGIS • École Nationale Supérieure Polytechnique de Yaoundé</div>
+                        <div>Projet de Webmapping 5GI 2025-2026</div>
+                    </div>
+                    
+                    <script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                            }, 300);
+                        };
+                    <\/script>
+                </body>
+                </html>
+            `);
+
+            printWindow.document.close();
+
+        } catch (error) {
+            console.error('Erreur lors de la capture de la carte:', error);
+            alert('Une erreur est survenue lors de la préparation de l\'impression. Veuillez réessayer.');
+        } finally {
+            loadingOverlay.remove();
+        }
+    };
   
     // Animation Loop
     useEffect(() => {
@@ -1089,6 +1372,7 @@ export const Geoportal = () => {
                         onResetView={handleResetView}
                         onLocate={handleLocate}
                         onFullscreen={handleFullscreen}
+                        onPrint={handlePrint}
                     />
                     
                     {/* Basemap Switcher */}

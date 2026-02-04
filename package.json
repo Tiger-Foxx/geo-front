@@ -13,6 +13,7 @@
     "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.26.2",
+    "html2canvas": "^1.4.1",
     "leaflet": "^1.9.4",
     "leaflet-fullscreen": "^1.0.2",
     "leaflet.locatecontrol": "^0.86.0",

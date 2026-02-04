@@ -1,4 +1,4 @@
-import { Plus, Minus, Home, Locate, Maximize } from 'lucide-react';
+import { Plus, Minus, Home, Locate, Maximize, Printer } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 
@@ -8,14 +8,16 @@ interface MapToolsProps {
   onResetView: () => void;
   onLocate: () => void;
   onFullscreen: () => void;
+  onPrint?: () => void;
   activeTool?: string;
 }
 
-export const MapTools = ({ onZoomIn, onZoomOut, onResetView, onLocate, onFullscreen, activeTool }: MapToolsProps) => {
+export const MapTools = ({ onZoomIn, onZoomOut, onResetView, onLocate, onFullscreen, onPrint, activeTool }: MapToolsProps) => {
   const tools = [
     { id: 'reset', icon: Home, action: onResetView, label: 'Vue Globale' },
     { id: 'locate', icon: Locate, action: onLocate, label: 'Ma Position' },
     { id: 'fullscreen', icon: Maximize, action: onFullscreen, label: 'Plein Écran' },
+    { id: 'print', icon: Printer, action: onPrint, label: 'Imprimer la carte' },
     { id: 'divider' },
     { id: 'zoom-in', icon: Plus, action: onZoomIn, label: 'Zoom +' },
     { id: 'zoom-out', icon: Minus, action: onZoomOut, label: 'Zoom -' },

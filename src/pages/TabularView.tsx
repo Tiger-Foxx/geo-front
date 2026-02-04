@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {  MOCK_DB, PECHE_INFRA_TYPES } from '../data/mockData';
-import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, AlertCircle, Database, Wheat, Beef, Search, X } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Download, BarChart3, MapPin, ChevronDown, TrendingUp, Layers, Calendar, Check, Fish, Anchor, Warehouse, Globe, Building2, Waves, Factory, AlertCircle, Database, Wheat, Beef, Search, X, FileSpreadsheet, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGeoServerFilters, usePecheData } from '../hooks/useGeoServer';
 import GeoServerAPI from '../services/geoserver';
@@ -12,6 +12,205 @@ interface TabularViewProps {
   years: number[];
   selectedIndicator?: string;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTILITAIRE D'EXPORT CSV/EXCEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ExportOptions {
+  filename: string;
+  headers: string[];
+  rows: (string | number | null)[][];
+  title?: string;
+  metadata?: Record<string, string>;
+}
+
+const exportToCSV = ({ filename, headers, rows, title, metadata }: ExportOptions) => {
+  // BOM pour UTF-8 (support des caractères français)
+  let csvContent = '\ufeff';
+  
+  // Métadonnées en commentaires
+  if (title) {
+    csvContent += `# ${title}\n`;
+  }
+  if (metadata) {
+    Object.entries(metadata).forEach(([key, value]) => {
+      csvContent += `# ${key}: ${value}\n`;
+    });
+    csvContent += `# Exporté le: ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}\n`;
+    csvContent += '#\n';
+  }
+  
+  // En-têtes
+  csvContent += headers.map(h => `"${h}"`).join(';') + '\n';
+  
+  // Données
+  rows.forEach(row => {
+    csvContent += row.map(cell => {
+      if (cell === null || cell === undefined) return '""';
+      if (typeof cell === 'number') return cell.toString().replace('.', ','); // Format FR
+      return `"${cell}"`;
+    }).join(';') + '\n';
+  });
+  
+  // Créer le blob et télécharger
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+// Export Excel (via format HTML que Excel peut lire)
+const exportToExcel = ({ filename, headers, rows, title, metadata }: ExportOptions) => {
+  let htmlContent = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+    <head>
+      <meta charset="UTF-8">
+      <!--[if gte mso 9]>
+      <xml>
+        <x:ExcelWorkbook>
+          <x:ExcelWorksheets>
+            <x:ExcelWorksheet>
+              <x:Name>${title || 'Données'}</x:Name>
+            </x:ExcelWorksheet>
+          </x:ExcelWorksheets>
+        </x:ExcelWorkbook>
+      </xml>
+      <![endif]-->
+      <style>
+        table { border-collapse: collapse; }
+        th { background-color: #056B32; color: white; font-weight: bold; padding: 8px; border: 1px solid #ddd; }
+        td { padding: 6px; border: 1px solid #ddd; }
+        .metadata { color: #666; font-style: italic; }
+        .number { text-align: right; }
+      </style>
+    </head>
+    <body>
+  `;
+  
+  // Métadonnées
+  if (title) {
+    htmlContent += `<h2>${title}</h2>`;
+  }
+  if (metadata) {
+    htmlContent += '<p class="metadata">';
+    Object.entries(metadata).forEach(([key, value]) => {
+      htmlContent += `${key}: ${value}<br/>`;
+    });
+    htmlContent += `Exporté le: ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`;
+    htmlContent += '</p>';
+  }
+  
+  // Tableau
+  htmlContent += '<table>';
+  htmlContent += '<thead><tr>';
+  headers.forEach(h => {
+    htmlContent += `<th>${h}</th>`;
+  });
+  htmlContent += '</tr></thead>';
+  
+  htmlContent += '<tbody>';
+  rows.forEach(row => {
+    htmlContent += '<tr>';
+    row.forEach((cell, idx) => {
+      const isNumber = typeof cell === 'number';
+      const value = cell === null || cell === undefined ? '' : cell;
+      htmlContent += `<td class="${isNumber ? 'number' : ''}">${value}</td>`;
+    });
+    htmlContent += '</tr>';
+  });
+  htmlContent += '</tbody></table>';
+  
+  htmlContent += '</body></html>';
+  
+  const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.xls`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSANT BOUTON EXPORT AVEC MENU
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ExportButtonProps {
+  onExportCSV: () => void;
+  onExportExcel: () => void;
+  disabled?: boolean;
+}
+
+const ExportButton = ({ onExportCSV, onExportExcel, disabled }: ExportButtonProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div className="relative">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${
+          disabled 
+            ? 'bg-slate-100 dark:bg-neutral-800 text-slate-400 cursor-not-allowed'
+            : 'bg-cameroon-green/10 text-cameroon-green hover:bg-cameroon-green/20'
+        }`}
+        title="Exporter les données"
+      >
+        <Download size={16} strokeWidth={2} />
+        <span>Exporter</span>
+        <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      <AnimatePresence>
+        {isOpen && !disabled && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="absolute top-full mt-1 right-0 w-[180px] bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xl z-50"
+          >
+            <button
+              onClick={() => { onExportCSV(); setIsOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-left hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-neutral-300 transition-colors"
+            >
+              <FileText size={16} className="text-emerald-500" />
+              <div>
+                <div>Export CSV</div>
+                <div className="text-[10px] text-slate-400">Compatible Excel</div>
+              </div>
+            </button>
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+            <button
+              onClick={() => { onExportExcel(); setIsOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-left hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-neutral-300 transition-colors"
+            >
+              <FileSpreadsheet size={16} className="text-green-600" />
+              <div>
+                <div>Export Excel</div>
+                <div className="text-[10px] text-slate-400">Format .xls</div>
+              </div>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Overlay pour fermer le menu */}
+      {isOpen && <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />}
+    </div>
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPOSANT INDICATEUR DE CHARGEMENT
@@ -245,6 +444,58 @@ const AgricultureTabularView = ({ product, indicator, initialYear }: Agriculture
     return '';
   };
 
+  // ─── FONCTIONS D'EXPORT ─────────────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    if (!tableData.length) return;
+    
+    const sortedYears = [...selectedYears].sort((a, b) => b - a);
+    const headers = ['Département', 'Région', ...sortedYears.map(y => y.toString())];
+    const rows = tableData.map(row => [
+      row.zone,
+      row.region,
+      ...sortedYears.map(y => row[`y${y}`] ?? null)
+    ]);
+    
+    exportToCSV({
+      filename: `agriculture_${product}_${indicator}`.toLowerCase().replace(/\s+/g, '_'),
+      headers,
+      rows,
+      title: `Données Agriculture - ${product}`,
+      metadata: {
+        'Produit': product,
+        'Indicateur': indicator,
+        'Années': sortedYears.join(', '),
+        'Région': selectedRegion === 'all' ? 'Toutes' : selectedRegion,
+        'Nombre de lignes': tableData.length.toString()
+      }
+    });
+  }, [tableData, selectedYears, product, indicator, selectedRegion]);
+
+  const handleExportExcel = useCallback(() => {
+    if (!tableData.length) return;
+    
+    const sortedYears = [...selectedYears].sort((a, b) => b - a);
+    const headers = ['Département', 'Région', ...sortedYears.map(y => y.toString())];
+    const rows = tableData.map(row => [
+      row.zone,
+      row.region,
+      ...sortedYears.map(y => row[`y${y}`] ?? null)
+    ]);
+    
+    exportToExcel({
+      filename: `agriculture_${product}_${indicator}`.toLowerCase().replace(/\s+/g, '_'),
+      headers,
+      rows,
+      title: `Agriculture - ${product} (${indicator})`,
+      metadata: {
+        'Produit': product,
+        'Indicateur': indicator,
+        'Années': sortedYears.join(', '),
+        'Région': selectedRegion === 'all' ? 'Toutes' : selectedRegion
+      }
+    });
+  }, [tableData, selectedYears, product, indicator, selectedRegion]);
+
   return (
     <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
       <div className="w-full h-full flex flex-col space-y-0 max-w-[1800px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
@@ -409,9 +660,12 @@ const AgricultureTabularView = ({ product, indicator, initialYear }: Agriculture
               )}
             </div>
             
-            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
-              <Download size={18} strokeWidth={2} />
-            </button>
+            {/* Bouton Export avec menu */}
+            <ExportButton 
+              onExportCSV={handleExportCSV}
+              onExportExcel={handleExportExcel}
+              disabled={tableData.length === 0 || isLoading}
+            />
           </div>
         </header>
 
@@ -614,6 +868,54 @@ const ElevageTabularView = ({ initialYear }: { product: string; initialYear: num
     };
   }, [allFilieresData]);
 
+  // ─── FONCTIONS D'EXPORT ÉLEVAGE ─────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    if (!tableData.length) return;
+    
+    const headers = ['Région', ...filieres, 'Total'];
+    const rows = tableData.map(row => [
+      row.region,
+      ...filieres.map(f => row[f] ?? null),
+      row.total
+    ]);
+    
+    exportToCSV({
+      filename: `elevage_${selectedYear}`,
+      headers,
+      rows,
+      title: `Données Élevage - ${selectedYear}`,
+      metadata: {
+        'Année': selectedYear.toString(),
+        'Filières': filieres.join(', '),
+        'Nombre de régions': tableData.length.toString(),
+        'Unité': 'têtes'
+      }
+    });
+  }, [tableData, filieres, selectedYear]);
+
+  const handleExportExcel = useCallback(() => {
+    if (!tableData.length) return;
+    
+    const headers = ['Région', ...filieres, 'Total'];
+    const rows = tableData.map(row => [
+      row.region,
+      ...filieres.map(f => row[f] ?? null),
+      row.total
+    ]);
+    
+    exportToExcel({
+      filename: `elevage_${selectedYear}`,
+      headers,
+      rows,
+      title: `Élevage - Effectifs ${selectedYear}`,
+      metadata: {
+        'Année': selectedYear.toString(),
+        'Filières': filieres.join(', '),
+        'Unité': 'têtes'
+      }
+    });
+  }, [tableData, filieres, selectedYear]);
+
   return (
     <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
       <div className="w-full h-full flex flex-col space-y-0 max-w-[1800px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
@@ -679,9 +981,12 @@ const ElevageTabularView = ({ initialYear }: { product: string; initialYear: num
               </AnimatePresence>
             </div>
             
-            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
-              <Download size={18} strokeWidth={2} />
-            </button>
+            {/* Bouton Export avec menu */}
+            <ExportButton 
+              onExportCSV={handleExportCSV}
+              onExportExcel={handleExportExcel}
+              disabled={tableData.length === 0 || isLoading}
+            />
           </div>
         </header>
 
@@ -897,6 +1202,72 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
     );
   }, [regionalData, searchTerm]);
 
+  // ─── FONCTIONS D'EXPORT PÊCHE ─────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    let headers: string[];
+    let rows: (string | number | null)[][];
+    let filename: string;
+    let title: string;
+    
+    if (dimension === 'production') {
+      headers = ['Département', 'Production (tonnes)', 'Note'];
+      rows = filteredDeptData.map(d => [d.departement, d.valeur, d.note || '']);
+      filename = `peche_production_departements_${selectedYear}`;
+      title = `Pêche - Production Départementale ${selectedYear}`;
+    } else {
+      headers = ['Région', 'Étangs', 'Fumoirs', 'Halls de vente', 'Bacs', 'Cages'];
+      rows = filteredRegionalData.map(d => [
+        d.region, d.etangs, d.fumoirs, d.halls_vente, d.bacs, d.cages
+      ]);
+      filename = `peche_infrastructures_${selectedYear}`;
+      title = `Pêche - Infrastructures Régionales ${selectedYear}`;
+    }
+    
+    exportToCSV({
+      filename,
+      headers,
+      rows,
+      title,
+      metadata: {
+        'Année': selectedYear.toString(),
+        'Dimension': dimension === 'production' ? 'Production' : 'Infrastructures',
+        'Nombre de lignes': rows.length.toString()
+      }
+    });
+  }, [dimension, filteredDeptData, filteredRegionalData, selectedYear]);
+
+  const handleExportExcel = useCallback(() => {
+    let headers: string[];
+    let rows: (string | number | null)[][];
+    let filename: string;
+    let title: string;
+    
+    if (dimension === 'production') {
+      headers = ['Département', 'Production (tonnes)', 'Note'];
+      rows = filteredDeptData.map(d => [d.departement, d.valeur, d.note || '']);
+      filename = `peche_production_departements_${selectedYear}`;
+      title = `Pêche - Production Départementale ${selectedYear}`;
+    } else {
+      headers = ['Région', 'Étangs', 'Fumoirs', 'Halls de vente', 'Bacs', 'Cages'];
+      rows = filteredRegionalData.map(d => [
+        d.region, d.etangs, d.fumoirs, d.halls_vente, d.bacs, d.cages
+      ]);
+      filename = `peche_infrastructures_${selectedYear}`;
+      title = `Pêche - Infrastructures Régionales ${selectedYear}`;
+    }
+    
+    exportToExcel({
+      filename,
+      headers,
+      rows,
+      title,
+      metadata: {
+        'Année': selectedYear.toString(),
+        'Dimension': dimension === 'production' ? 'Production' : 'Infrastructures'
+      }
+    });
+  }, [dimension, filteredDeptData, filteredRegionalData, selectedYear]);
+
   return (
     <div className="h-full w-full bg-white dark:bg-[#050505] p-0 md:p-6 md:pl-[88px] pt-16 md:pt-6 flex flex-col overflow-hidden font-sans">
       <div className="w-full h-full flex flex-col space-y-0 max-w-[1600px] mx-auto border-x border-slate-100 dark:border-white/5 relative">
@@ -1013,9 +1384,12 @@ const PecheTabularView = ({ initialYear }: PecheTabularViewProps) => {
               </button>
             </div>
             
-            <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Exporter CSV">
-              <Download size={18} strokeWidth={2} />
-            </button>
+            {/* Bouton Export avec menu */}
+            <ExportButton 
+              onExportCSV={handleExportCSV}
+              onExportExcel={handleExportExcel}
+              disabled={isLoading}
+            />
           </div>
         </header>
 
