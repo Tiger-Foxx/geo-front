@@ -43,11 +43,9 @@ const log = {
 // ───────────────────────────────────────────────────────────────────────────────
 
 // En dev, utiliser le proxy Vite pour contourner CORS
-// En prod, utiliser l'URL directe (CORS configuré sur le serveur)
-const isDev = import.meta.env.DEV;
-const GEOSERVER_BASE = isDev 
-  ? '/geoserver'  // Proxy Vite → https://c220g2-011025.wisc.cloudlab.us/geoserver
-  : 'https://c220g2-011025.wisc.cloudlab.us/geoserver';
+// En prod, utiliser le proxy Vercel (configuré dans vercel.json)
+// Dans les deux cas, on utilise une URL relative pour éviter les problèmes CORS
+const GEOSERVER_BASE = '/geoserver';
 
 export const GEOSERVER_CONFIG = {
   baseUrl: GEOSERVER_BASE,

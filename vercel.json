@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/geoserver/:path*",
+      "destination": "https://c220g2-011025.wisc.cloudlab.us/geoserver/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
